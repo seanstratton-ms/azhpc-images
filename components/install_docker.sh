@@ -4,7 +4,7 @@ set -ex
 source ${UTILS_DIR}/utilities.sh
 
 # Install Moby Engine and CLI
-if [[ $DISTRIBUTION == *"ubuntu"* ]]; then
+if [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
     if [[ "$ARCHITECTURE" == "aarch64" && "${NODE_TYPE:-azure-vm}" == "baremetal" ]]; then
         # Baremetal aarch64: pin to a specific moby version from the baremetal package repo.
         moby_metadata=$(get_component_config "moby")
@@ -55,7 +55,7 @@ ctr plugin ls
 docker_version=$(docker --version | awk -F' ' '{print $3}')
 write_component_version "DOCKER" ${docker_version::-1}
 
-if [[ $DISTRIBUTION == ubuntu* ]]; then
+if [[ $DISTRIBUTION == ubuntu* || $DISTRIBUTION == *"debian"* ]]; then
     moby_version=$(apt list --installed | grep moby-engine | awk -F' ' '{print $2}')
 elif [[ $DISTRIBUTION == "azurelinux3.0" ]]; then
     moby_version=$(rpm -qa | grep moby | cut -d'-' -f3,4)
