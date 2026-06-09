@@ -42,10 +42,12 @@ if [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
     else
         # Azure VM: pin the kernel package to prevent unintended kernel upgrades,
         # then upgrade all other pre-installed components.
-        if [[ "${SKU_FAMILY}" == "gb-family" ]]; then
-            apt-mark hold linux-azure-nvidia
-        else
-            apt-mark hold linux-azure-${KERNEL_VERSION:-6.8}
+        if [[ $DISTRIBUTION != *"debian"* ]]; then
+            if [[ "${SKU_FAMILY}" == "gb-family" ]]; then
+                apt-mark hold linux-azure-nvidia
+            else
+                apt-mark hold linux-azure-${KERNEL_VERSION:-6.8}
+            fi
         fi
         apt update
         apt upgrade -y
