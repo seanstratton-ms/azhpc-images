@@ -7,7 +7,7 @@ export AZHPC_IMAGES_TEST_DIR=$TOP_DIR/tests
 export UTILS_DIR=$TOP_DIR/utils
 export DISTRIBUTION=$(. /etc/os-release;echo $ID$VERSION_ID)
 
-if [[ $DISTRIBUTION == *"ubuntu"* ]]; then
+if [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
     export ARCHITECTURE_DISTRO=$(dpkg --print-architecture)
 else    
     export ARCHITECTURE_DISTRO=$(rpm --eval '%{_arch}')
@@ -34,7 +34,7 @@ if [[ -z "${SKU_FAMILY:-}" ]]; then
     esac
 fi
 
-if [[ $DISTRIBUTION == *"ubuntu"* ]]; then
+if [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
     if [[ "${NODE_TYPE}" == "baremetal" ]]; then
         # Baremetal: skip apt upgrade — the offline ISO installer cannot reach
         # online package mirrors; the base image is already validated.
