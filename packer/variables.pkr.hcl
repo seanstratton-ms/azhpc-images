@@ -638,6 +638,9 @@ locals {
         "rocky" = {
           "8.10" = ["resf", "rockylinux-x86_64", "8-base"],
           "9.8"  = ["resf", "rockylinux-x86_64", "9-base"]
+        },
+        "debian" = {
+          "13" = ["Debian", "debian-13", "13-gen2"]
         }
       },
       "Marketplace-FIPS" = {
@@ -706,6 +709,9 @@ locals {
       },
       "azurelinux" = {
         "3.0"   = "AzureLinuxHPC-3.0-NonFIPS-${local.internal_sig_image_definition_platform}${local.internal_sig_image_definition_sku}gen2-TL"
+      },
+      "debian" = {
+        "13" = "DebianHPC-13-${local.internal_sig_image_definition_platform}${local.internal_sig_image_definition_sku}gen2"
       }
     },
     "Marketplace-FIPS" = {
