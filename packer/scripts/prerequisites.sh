@@ -343,13 +343,16 @@ echo "=========================================="
 configure_gb200_partuuid "${GB200_PARTUUID:-None}"
 
 # Wait for apt lock and cloud-init before any package operations (Ubuntu)
-if [[ "${OS_FAMILY}" == "ubuntu" ]]; then
+if [[ "${OS_FAMILY}" == "ubuntu"  || "${OS_FAMILY}" == "debian" ]]; then
     wait_for_apt
 fi
 
 # OS-specific prerequisites
 case "${OS_FAMILY}" in
     ubuntu)
+        install_ubuntu_lts_kernel "${DISTRO_VERSION}"
+        ;;
+    debian)
         install_ubuntu_lts_kernel "${DISTRO_VERSION}"
         ;;
     *)
