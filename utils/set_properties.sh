@@ -1,6 +1,8 @@
 #!/bin/bash
 set -ex
 
+export DEBIAN_FRONTEND=noninteractive
+
 export TOP_DIR="$(dirname "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)")"
 export COMPONENT_DIR=$TOP_DIR/components
 export AZHPC_IMAGES_TEST_DIR=$TOP_DIR/tests
@@ -49,11 +51,11 @@ if [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
                 apt-mark hold linux-azure-${KERNEL_VERSION:-6.8}
             fi
         fi
-        apt update
-        apt upgrade -y
+        apt-get update
+        apt-get upgrade -y
     fi
     # jq is needed to parse the component versions from the versions.json file
-    apt install -y jq
+    apt-get install -y jq
     export MODULE_FILES_DIRECTORY=/usr/share/modules/modulefiles
 elif [[ $DISTRIBUTION == almalinux* ]]; then
     if [[ $DISTRIBUTION == "almalinux8.10" ]]; then
