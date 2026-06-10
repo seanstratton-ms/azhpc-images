@@ -1,6 +1,8 @@
 #!/bin/bash
 set -ex
 
+export DEBIAN_FRONTEND=noninteractive
+
 # Check if arguments are passed
 if [ -z "$1" ] || [ -z "$2" ]; then
     echo "Error: Missing arguments. Please provide both GPU type (NVIDIA/AMD) and SKU."

@@ -1,6 +1,8 @@
 #!/bin/bash
 set -ex
 
+export DEBIAN_FRONTEND=noninteractive
+
 # Install the "Microsoft TLS RSA Root G2" trust anchor before any HTTPS
 # calls to Microsoft endpoints.
 
@@ -11,9 +13,13 @@ else
 fi
 
 # Setup microsoft packages repository
-curl -sSL -O https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb
-dpkg -i packages-microsoft-prod.deb
-rm packages-microsoft-prod.deb
+if [[ $DISTRIBUTION != *"debian"* ]]; then
+    curl -sSL -O https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb
+    dpkg -i packages-microsoft-prod.deb
+    rm packages-microsoft-prod.deb
+else
+    echo "Skipping Microsoft packages repository setup on Debian"
+fi
 
 apt-get update
 apt-get -y install build-essential
