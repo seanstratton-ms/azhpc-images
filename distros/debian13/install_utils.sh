@@ -3,7 +3,12 @@ set -ex
 
 # Install the "Microsoft TLS RSA Root G2" trust anchor before any HTTPS
 # calls to Microsoft endpoints.
-$COMPONENT_DIR/install_microsoft_tls_root_g2.sh
+
+if [[ $DISTRIBUTION != *"debian"* ]]; then
+    $COMPONENT_DIR/install_microsoft_tls_root_g2.sh
+else
+    echo "Skipping Microsoft TLS root install on Debian"
+fi
 
 # Setup microsoft packages repository
 curl -sSL -O https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb
