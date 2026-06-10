@@ -57,11 +57,7 @@ $COMPONENT_DIR/install_docker.sh
 $COMPONENT_DIR/install_dcgm.sh
 
 # install AMD tuned libraries
-if [[ $DISTRIBUTION != *"debian"* ]]; then
-    $COMPONENT_DIR/install_amd_libs.sh
-else
-    echo "Skipping AMD libraries install on Debian"
-fi
+$COMPONENT_DIR/install_amd_libs.sh
 
 # install Intel libraries
 $COMPONENT_DIR/install_intel_libs.sh

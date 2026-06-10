@@ -23,7 +23,7 @@ fi
 
 source ../../utils/set_properties.sh
 
-./install_utils.sh
+bash ./install_utils.sh
 
 # update cmake
 $COMPONENT_DIR/install_cmake.sh

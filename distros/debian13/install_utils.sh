@@ -6,9 +6,13 @@ set -ex
 $COMPONENT_DIR/install_microsoft_tls_root_g2.sh
 
 # Setup microsoft packages repository
-curl -sSL -O https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb
-dpkg -i packages-microsoft-prod.deb
-rm packages-microsoft-prod.deb
+if [[ $DISTRIBUTION != *"debian"* ]]; then
+    curl -sSL -O https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb
+    dpkg -i packages-microsoft-prod.deb
+    rm packages-microsoft-prod.deb
+else
+    echo "Skipping Microsoft packages repository setup on Debian"
+fi  
 
 apt-get update
 apt-get -y install build-essential
