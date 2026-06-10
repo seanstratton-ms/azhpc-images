@@ -10,7 +10,12 @@ rocm_url=$(jq -r '.url' <<< $rocm_metadata)
 rocm_sha256=$(jq -r '.sha256' <<< $rocm_metadata)
 DEBPACKAGE=$(basename ${rocm_url})
 
-if [[ $DISTRIBUTION == *"ubuntu"* ]]; then
+if [[ $DISTRIBUTION == *"debian"* ]]; then
+    echo "Skipping ROCm/AMDGPU install on Debian"
+    write_component_version "ROCM" "N/A on Debian"
+    exit 0
+fi
+elif [[ $DISTRIBUTION == *"ubuntu"* ]]; then
    if [[ $DISTRIBUTION == "ubuntu24.04" ]]; then
       # ROCm 6.4 depends on mivisionx-dev which depends on libopencv-dev which depends on libopenmpi3t64 which depends on libucx0, which is a Ubuntu upstream UCX that
       # is older than and conflicts with the ucx package installed by doca-ofed and has unknown IB support status.
