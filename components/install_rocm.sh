@@ -14,7 +14,7 @@ if [[ $DISTRIBUTION == *"debian"* ]]; then
     echo "Skipping ROCm/AMDGPU install on Debian"
     write_component_version "ROCM" "N/A on Debian"
     exit 0
-fi
+
 elif [[ $DISTRIBUTION == *"ubuntu"* ]]; then
    if [[ $DISTRIBUTION == "ubuntu24.04" ]]; then
       # ROCm 6.4 depends on mivisionx-dev which depends on libopencv-dev which depends on libopenmpi3t64 which depends on libucx0, which is a Ubuntu upstream UCX that
