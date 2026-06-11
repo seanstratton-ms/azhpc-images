@@ -15,11 +15,11 @@ fi
 # Setup microsoft packages repository
 if [[ $DISTRIBUTION != *"debian"* ]]; then
     curl -sSL -O https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb
-    dpkg -i packages-microsoft-prod.deb
-    rm packages-microsoft-prod.deb
 else
-    echo "Skipping Microsoft packages repository setup on Debian"
+    curl -sSL -O https://packages.microsoft.com/config/debian/13/packages-microsoft-prod.deb
 fi
+dpkg -i packages-microsoft-prod.deb
+rm packages-microsoft-prod.deb
 
 apt-get update
 apt-get -y install build-essential
