@@ -22,4 +22,3 @@ sed -i '/^int kvp_key_exists(/!s/kvp_key_exists([^)]*)/0/g' kvp_client.c
 # Move and compile
 sudo mv kvp_client.c $DEST_DIR
 sudo gcc $DEST_DIR/kvp_client.c -o $DEST_DIR/kvp_client
-``
