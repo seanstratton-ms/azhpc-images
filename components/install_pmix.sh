@@ -31,6 +31,15 @@ if [[ $DISTRIBUTION == *"ubuntu"* ]]; then
     # Hold versions of packages to prevent accidental updates. Packages can still be upgraded explictly by
     # '--allow-change-held-packages' flag.
     apt-mark hold pmix=${PMIX_VERSION} libevent-dev libhwloc-dev # libmunge-dev
+elif [[ $DISTRIBUTION == *"debian"* ]]; then
+    # PMC does not publish a slurm-debian-* repo, and the PMC trixie general
+    # repo does not carry pmix. Use Debian's native pmix stack (libpmix-bin /
+    # libpmix-dev), which is PMIx 5.x on trixie -- a different major than the
+    # PMC-built 4.2.9 used on Ubuntu, so PMIX_VERSION is overridden per-distro
+    # in versions.json.
+    apt update
+    apt install -y libpmix-bin=${PMIX_VERSION} libpmix-dev=${PMIX_VERSION} libevent-dev libhwloc-dev
+    apt-mark hold libpmix-bin libpmix-dev libevent-dev libhwloc-dev
 elif [[ $DISTRIBUTION == "azurelinux3.0" ]]; then
     tdnf -y install pmix pmix-devel pmix-tools
     tdnf -y install hwloc-devel libevent-devel munge-devel
