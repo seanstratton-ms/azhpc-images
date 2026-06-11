@@ -16,8 +16,8 @@ wget https://raw.githubusercontent.com/microsoft/lis-test/master/WS2012R2/lisa/t
 # Fix missing return type for main()
 sed -i 's/^main(/int main(/' kvp_client.c
 
-# Disable kvp_key_exists usage
-sed -i 's/kvp_key_exists([^)]*)/0/g' kvp_client.c
+# Disable kvp_key_exists call sites (skip the function definition line itself)
+sed -i '/^int kvp_key_exists(/!s/kvp_key_exists([^)]*)/0/g' kvp_client.c
 
 # Move and compile
 sudo mv kvp_client.c $DEST_DIR
