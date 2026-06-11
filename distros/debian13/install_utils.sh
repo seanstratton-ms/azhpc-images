@@ -66,8 +66,14 @@ apt-get -y install numactl \
                    libmount-dev \
                    nfs-common \
                    pssh \
-                   dos2unix \
-                   azcopy
+                   dos2unix
+
+# Install azcopy from official tarball (not in MS debian/13 apt repo)
+AZCOPY_TMP=$(mktemp -d)
+curl -sSL -o "$AZCOPY_TMP/azcopy.tar.gz" https://aka.ms/downloadazcopy-v10-linux
+tar -xzf "$AZCOPY_TMP/azcopy.tar.gz" -C "$AZCOPY_TMP" --strip-components=1
+install -m 0755 "$AZCOPY_TMP/azcopy" /usr/local/bin/azcopy
+rm -rf "$AZCOPY_TMP"
 
 # Load ib_ipoib on Azure VM builds; skip on baremetal (IPoIB is not used).
 if [[ "${NODE_TYPE:-azure-vm}" != "baremetal" ]]; then
