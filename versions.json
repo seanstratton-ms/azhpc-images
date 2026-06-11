@@ -59,6 +59,13 @@
                 "url": "https://www.mellanox.com/downloads/DOCA/DOCA_v3.2.2/host/doca-host_3.2.2-035000-25.10-ubuntu2404_arm64.deb"
             }
         },
+        "debian13": {
+            "x86_64": {
+                "version": "3.2.2",
+                "sha256": "212c2f87d3fb19327a8c3f14c0a68987ea4fa834af911e1e7348b2cf4cb8a1c8",
+                "url": "https://www.mellanox.com/downloads/DOCA/DOCA_v3.2.2/host/doca-host_3.2.2-035000-25.10-debian13_amd64.deb"
+            }
+        },
         "ubuntu24.04-aks": {
             "aarch64": {
                 "version": "3.1.0-091513-25.07-ubuntu2404"

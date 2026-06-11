@@ -11,7 +11,7 @@ DOCA_FILE=$(basename ${DOCA_URL})
 
 download_and_verify $DOCA_URL $DOCA_SHA256
 
-if [[ $DISTRIBUTION == *"ubuntu"* ]]; then
+if [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
     dpkg -i $DOCA_FILE
 
     # we prefer distro-shipped dkms and ignore the one from DOCA, unless there is evidence to the contrary
