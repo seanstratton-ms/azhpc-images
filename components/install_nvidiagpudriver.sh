@@ -37,8 +37,8 @@ if [[ $DISTRIBUTION == "azurelinux3.0" ]]; then
     # Temp disable NVIDIA driver updates
     mkdir -p /etc/tdnf/locks.d
     echo cuda >> /etc/tdnf/locks.d/nvidia.conf
-elif [[ $DISTRIBUTION == *"ubuntu"* ]]; then
-    # APT-based NVIDIA driver installation for Ubuntu
+elif [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
+    # APT-based NVIDIA driver installation for Ubuntu / Debian
     NVIDIA_DRIVER_VERSION=$(jq -r '.driver.version' <<< $nvidia_metadata)
     CUDA_DRIVER_DISTRIBUTION=$(jq -r '.driver.distribution' <<< $cuda_metadata)
 
@@ -47,11 +47,24 @@ elif [[ $DISTRIBUTION == *"ubuntu"* ]]; then
     dpkg -i ./cuda-keyring_1.1-1_all.deb
     apt-get update
 
-    # Pin the driver version and install via APT packages
-    apt install nvidia-driver-pinning-${NVIDIA_DRIVER_VERSION} -y
+    # Pin the driver version and install via APT packages.
+    # Debian's NVIDIA repo only ships major-version pinning packages
+    # (e.g. nvidia-driver-pinning-590) and not full-version variants
+    # (nvidia-driver-pinning-590.44.01), so fall back to the major when
+    # the full-version package is unavailable.
+    NVIDIA_DRIVER_MAJOR_VERSION=$(jq -r '.driver.major_version // empty' <<< $nvidia_metadata)
+    if [[ $DISTRIBUTION == *"debian"* && -n "${NVIDIA_DRIVER_MAJOR_VERSION}" ]]; then
+        apt install nvidia-driver-pinning-${NVIDIA_DRIVER_MAJOR_VERSION} -y
+    else
+        apt install nvidia-driver-pinning-${NVIDIA_DRIVER_VERSION} -y
+    fi
     if [ "$SKU" = "V100" ]; then
         # V100 requires proprietary kernel modules
         apt install cuda-drivers -y
+    elif [[ $DISTRIBUTION == *"debian"* ]]; then
+        # Pin the specific driver version on Debian since we install by
+        # major-version repo metadata.
+        apt install -y nvidia-open=${NVIDIA_DRIVER_VERSION}-1
     else
         # A100, H100, H200 use open kernel modules
         apt install nvidia-open -y
@@ -106,7 +119,7 @@ if [[ "$DISTRIBUTION" != *-aks ]]; then
     CUDA_SAMPLES_VERSION=$(jq -r '.samples.version' <<< $cuda_metadata)
     CUDA_SAMPLES_SHA256=$(jq -r '.samples.sha256' <<< $cuda_metadata)
 
-    if [[ $DISTRIBUTION == *"ubuntu"* ]]; then
+    if [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
         # NVIDIA APT repo already configured during driver installation
         apt install -y cuda-toolkit-${CUDA_DRIVER_VERSION//./-}
     elif [[ $DISTRIBUTION == "azurelinux3.0" ]]; then    

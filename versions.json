@@ -444,6 +444,14 @@
                 }
             }
         },
+        "debian13": {
+            "x86_64": {
+                "driver": {
+                    "version": "590.44.01",
+                    "major_version": "590"
+                }
+            }
+        },
         "almalinux8.10": {
             "x86_64": {
                 "driver": {
@@ -587,6 +595,18 @@
                 "driver": {
                     "version": "13.0",
                     "distribution": "ubuntu2404"
+                }
+            }
+        },
+        "debian13": {
+            "x86_64": {
+                "driver": {
+                    "version": "13.2",
+                    "distribution": "debian13"
+                },
+                "samples": {
+                    "version": "13.0",
+                    "sha256": "63cc9d5d8280c87df3c1f4e2276234a0f42cc497c52b40dd5bdda2836607db79"
                 }
             }
         },
