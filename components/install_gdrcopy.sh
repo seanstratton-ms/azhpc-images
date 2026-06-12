@@ -67,6 +67,22 @@ else
             fi
 
             CUDA=/usr/local/cuda ./build-deb-packages.sh
+
+            if [[ $DISTRIBUTION == "debian13" ]]; then
+                # The gdrdrv-dkms postinst runs `invoke-rc.d gdrdrv start`, which
+                # fails on the Debian 13 build VM because no NVIDIA hardware is
+                # present and therefore the nvidia kernel module is not loaded.
+                # Install a temporary policy-rc.d that denies service invocation
+                # during the dpkg install; gdrdrv will start normally on the
+                # customer VM at first boot.
+                cat >/usr/sbin/policy-rc.d <<'EOF'
+#!/bin/sh
+exit 101
+EOF
+                chmod +x /usr/sbin/policy-rc.d
+                trap 'rm -f /usr/sbin/policy-rc.d' EXIT
+            fi
+
             dpkg -i gdrdrv-dkms_${GDRCOPY_VERSION}_${ARCHITECTURE_DISTRO}.${GDRCOPY_DISTRIBUTION}.deb
             apt-mark hold gdrdrv-dkms
             dpkg -i libgdrapi_${GDRCOPY_VERSION}_${ARCHITECTURE_DISTRO}.${GDRCOPY_DISTRIBUTION}.deb
