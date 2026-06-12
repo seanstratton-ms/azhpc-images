@@ -85,6 +85,12 @@ elif [[ $DISTRIBUTION == *"ubuntu"* ]]; then
         echo "##[warning]No Lustre client packages available for kernel minor version ${KERNEL_MINOR}. Skipping Lustre installation."
         exit 0
     fi
+elif [[ $DISTRIBUTION == *"debian"* ]]; then
+    # Debian: AMLFS does not publish Debian packages (PMC ships repos for
+    # ubuntu/jammy, ubuntu/noble, el8, el9 only). Skip Lustre installation
+    # with a warning instead of falling through to the RHEL .rpm path.
+    echo "##[warning]Azure Lustre (AMLFS) packages are not published for ${DISTRIBUTION}. Skipping Lustre installation."
+    exit 0
 elif [[ $LUSTRE_BUILD_FROM_SOURCE == "true" ]]; then
     # RHEL-family build-from-source path: same approach as the Ubuntu
     # path above, but produces RPMs. Builds the lustre kmod as a DKMS

@@ -12,6 +12,12 @@ elif [[ $DISTRIBUTION == "ubuntu24.04" ]]; then
     apt install -y python3-netifaces
     apt install -y python3-yaml
     systemctl disable ufw
+elif [[ $DISTRIBUTION == *"debian"* ]]; then
+    apt install -y python3-netifaces
+    apt install -y python3-yaml
+    # ufw is not installed on the Debian cloud image by default; disable
+    # only when present so the bake doesn't fail on a missing unit.
+    systemctl disable ufw 2>/dev/null || true
 elif [[ $DISTRIBUTION == almalinux* ]] || [[ $DISTRIBUTION == rocky* ]] || [[ $DISTRIBUTION == rhel* ]]; then
     if [[ $DISTRIBUTION == almalinux8.10 ]] || [[ $DISTRIBUTION == rhel8* ]]; then 
         # Disable some unneeded services by default (administrators can re-enable if desired)

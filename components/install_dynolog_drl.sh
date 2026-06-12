@@ -53,7 +53,7 @@ if [[ "$GPU" == "NVIDIA" ]]; then
 
     if [[ $DISTRIBUTION == "azurelinux3.0" ]]; then
         install_and_track tdnf cmake cargo ninja-build build-essential
-    elif [[ $DISTRIBUTION == *"ubuntu"* ]]; then
+    elif [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
         install_and_track apt-get cmake cargo ninja-build build-essential
         install_and_track apt-get g++ pkg-config uuid-dev libssl-dev
     elif [[ $DISTRIBUTION == almalinux* ]] || [[ $DISTRIBUTION == rocky* ]]; then
@@ -134,8 +134,8 @@ EOF
             -DOPENSSL_INCLUDE_DIR=/usr/include/openssl3 \
             -DOPENSSL_CRYPTO_LIBRARY=/usr/lib64/openssl3/libcrypto.so \
             -DOPENSSL_SSL_LIBRARY=/usr/lib64/openssl3/libssl.so
-    elif [[ $DISTRIBUTION == *"ubuntu"* ]]; then
-        # On Ubuntu, OpenSSL libs are in the multiarch path, not /usr/lib or /usr/lib64
+    elif [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
+        # On Ubuntu/Debian, OpenSSL libs are in the multiarch path, not /usr/lib or /usr/lib64
         export OPENSSL_LIB_DIR=/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)
         cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release
     else
@@ -175,7 +175,7 @@ EOF
         echo "Removing newly installed build dependencies: ${NEWLY_INSTALLED_PKGS[*]}"
         if [[ $DISTRIBUTION == "azurelinux3.0" ]]; then
             tdnf remove -y "${NEWLY_INSTALLED_PKGS[@]}" || true
-        elif [[ $DISTRIBUTION == *"ubuntu"* ]]; then
+        elif [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
             apt-get remove -y "${NEWLY_INSTALLED_PKGS[@]}" || true
             apt-get autoremove -y || true
         elif [[ $DISTRIBUTION == almalinux* ]] || [[ $DISTRIBUTION == rocky* ]]; then

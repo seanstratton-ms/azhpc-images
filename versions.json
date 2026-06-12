@@ -940,6 +940,11 @@
             "aarch64": {
                 "version": "4.5.2"
             }
+        },
+        "debian13": {
+            "x86_64": {
+                "version": "1:4.5.2-1"
+            }
         }
     },
     "intel_one_mkl": {

@@ -15,7 +15,7 @@ TARBALL="v${NCCL_VERSION}.tar.gz"
 NCCL_DOWNLOAD_URL=https://github.com/NVIDIA/nccl/archive/refs/tags/${TARBALL}
 
 # Install NCCL
-if [[ $DISTRIBUTION == *"ubuntu"* ]]; then
+if [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
     apt install -y build-essential devscripts debhelper fakeroot
     apt install -y zlib1g-dev libibverbs-dev  
 elif [[ $DISTRIBUTION == "azurelinux3.0" ]]; then
@@ -31,7 +31,7 @@ tar -xvf ${TARBALL}
 
 pushd nccl-${NCCL_VERSION}
 make -j$(nproc) src.build
-if [[ $DISTRIBUTION == *"ubuntu"* ]]; then
+if [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
     make pkg.debian.build
     pushd build/pkg/deb/
     dpkg -i libnccl2_${NCCL_VERSION}+cuda${CUDA_DRIVER_VERSION}_${ARCHITECTURE_DISTRO}.deb

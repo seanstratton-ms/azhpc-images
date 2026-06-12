@@ -11,6 +11,11 @@ export AZNFS_NONINTERACTIVE_INSTALL=1
 if [[ $DISTRIBUTION == *"ubuntu"* ]]
 then
     apt install -y aznfs
+elif [[ $DISTRIBUTION == *"debian"* ]]
+then
+    # PMC may not publish an aznfs package for every Debian release.
+    # Try the install but degrade gracefully so the bake doesn't fail.
+    apt install -y aznfs || echo "##[warning]aznfs package not available on ${DISTRIBUTION}; skipping AZNFS Mount Helper."
 elif [[ $DISTRIBUTION == *"almalinux"* || $DISTRIBUTION == *"rocky"* || $DISTRIBUTION == *"rhel"* ]]
 then
     dnf install -y aznfs
