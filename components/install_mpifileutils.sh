@@ -18,7 +18,7 @@ SRC_DIR="/tmp/mpifileutils-src"
 echo "=== Installing mpifileutils ${MPIFILEUTILS_VERSION} ==="
 
 # Install build dependencies
-if [[ $DISTRIBUTION == *"ubuntu"* ]]; then
+if [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
     apt-get install -y libbz2-dev libattr1-dev libarchive-dev libssl-dev libcap-dev
 elif [[ $DISTRIBUTION == "azurelinux3.0" ]]; then
     tdnf install -y bzip2-devel libattr-devel libarchive-devel
