@@ -784,6 +784,13 @@
                 "distribution": "Ubuntu24_04"
             }
         },
+        "debian13": {
+            "x86_64": {
+                "version": "2.5.2-1",
+                "commit": "c91ad9f178e5fb729fc5b6dc62a77c3bb364d6c9",
+                "distribution": "Debian13"
+            }
+        },
         "almalinux8.10": {
             "x86_64": {
                 "version": "2.5.1-1",
