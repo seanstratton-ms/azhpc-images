@@ -5,7 +5,7 @@ source ${UTILS_DIR}/utilities.sh
 
 nvidia_metadata=$(get_component_config "nvidia")
 
-if [[ $DISTRIBUTION == *"ubuntu"* ]]; then
+if [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
     # Install from NVIDIA APT repo (already configured during driver installation)
     # Pinning package ensures the correct version is installed
     NVIDIA_DRIVER_VERSION=$(jq -r '.driver.version' <<< $nvidia_metadata)
