@@ -57,6 +57,15 @@ else
             cuda_metadata=$(get_component_config "cuda")
             CUDA_DRIVER_VERSION=$(jq -r '.driver.version' <<< $cuda_metadata)
 
+            if [[ $DISTRIBUTION == "debian13" ]]; then
+                # Debian 13's dpkg-source rejects source format '3.0 (quilt)' when the
+                # upstream version lacks a Debian revision. gdrcopy 2.5.2's
+                # build-deb-packages.sh sets PATCH_VERSION=2 which produces version
+                # "2.5.2" (no '-N' revision), so switch the debian packaging to the
+                # native source format which does not require a revision.
+                find . -path '*/debian*/source/format' -exec sed -i 's|3\.0 (quilt)|3.0 (native)|' {} +
+            fi
+
             CUDA=/usr/local/cuda ./build-deb-packages.sh
             dpkg -i gdrdrv-dkms_${GDRCOPY_VERSION}_${ARCHITECTURE_DISTRO}.${GDRCOPY_DISTRIBUTION}.deb
             apt-mark hold gdrdrv-dkms
