@@ -66,7 +66,45 @@ SKU_CUDA_VERSION=$(jq -r '.driver.version' <<< $cuda_metadata | cut -d'.' -f1)
 # Reference: https://developer.nvidia.com/dcgm#Downloads
 # the repo is already added during nvidia/ cuda installations
 
-if [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
+if [[ $DISTRIBUTION == "debian13" ]]; then
+    # NVIDIA's debian13 CUDA repo (created 2025-11) currently only ships
+    # cuda-keyring + nvidia-fabricmanager packages — no DCGM. Pull DCGM 4
+    # debs directly from NVIDIA's debian12 (bookworm) repo: the .debs only
+    # declare libc6 (>= 2.27) + lshw as runtime deps, both satisfied by
+    # trixie. Switch back to the regular apt-get install line below once
+    # NVIDIA publishes datacenter-gpu-manager-4-* for debian13.
+    dcgm_metadata=$(get_component_config "dcgm")
+    DCGM_VERSION=$(jq -r '.version' <<< $dcgm_metadata)
+    # DCGM .deb filenames omit the epoch, so strip "1:" prefix for URLs.
+    DCGM_FILE_VERSION="${DCGM_VERSION#1:}"
+    DCGM_REPO_BASE="https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64"
+    apt-get install -y lshw
+    tmpdir=$(mktemp -d)
+    pushd "${tmpdir}"
+    for pkg in \
+        "datacenter-gpu-manager-4-core_${DCGM_FILE_VERSION}_amd64.deb" \
+        "datacenter-gpu-manager-4-cuda${CUDA_VERSION}_${DCGM_FILE_VERSION}_amd64.deb" \
+        "datacenter-gpu-manager-4-proprietary_${DCGM_FILE_VERSION}_amd64.deb" \
+        "datacenter-gpu-manager-4-proprietary-cuda${CUDA_VERSION}_${DCGM_FILE_VERSION}_amd64.deb" ; do
+        curl -fsSL -O "${DCGM_REPO_BASE}/${pkg}"
+    done
+    dpkg -i ./*.deb
+    popd
+    rm -rf "${tmpdir}"
+    if [[ "${SKU_CUDA_VERSION}" -lt "${CUDA_VERSION}" ]]; then
+        echo "Installing DCGM packages for SKU-specific CUDA ${SKU_CUDA_VERSION}"
+        tmpdir=$(mktemp -d)
+        pushd "${tmpdir}"
+        for pkg in \
+            "datacenter-gpu-manager-4-cuda${SKU_CUDA_VERSION}_${DCGM_FILE_VERSION}_amd64.deb" \
+            "datacenter-gpu-manager-4-proprietary-cuda${SKU_CUDA_VERSION}_${DCGM_FILE_VERSION}_amd64.deb" ; do
+            curl -fsSL -O "${DCGM_REPO_BASE}/${pkg}"
+        done
+        dpkg -i ./*.deb
+        popd
+        rm -rf "${tmpdir}"
+    fi
+elif [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
     # Get DCGM version from versions.json
     dcgm_metadata=$(get_component_config "dcgm")
     DCGM_VERSION=$(jq -r '.version' <<< $dcgm_metadata)
