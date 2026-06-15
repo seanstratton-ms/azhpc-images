@@ -12,7 +12,10 @@ MONEO_SHA256=$(jq -r '.sha256' <<< $moneo_metadata)
 # Dependencies 
 if [[ $DISTRIBUTION == "azurelinux3.0" ]]; then
     tdnf install -y python3-pip
-elif [[ $DISTRIBUTION == "ubuntu24.04" ]]; then
+elif [[ $DISTRIBUTION == "ubuntu24.04" || $DISTRIBUTION == "debian13" ]]; then
+    # Both trixie and noble enforce PEP 668 (mark python3 as
+    # externally-managed), so `python3 -m pip install --upgrade pip`
+    # fails. Refresh the distro python3-pip package instead.
     apt-get install -y --only-upgrade python3-pip
 else
     python3 -m pip install --upgrade pip
