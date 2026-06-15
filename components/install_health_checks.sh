@@ -24,13 +24,17 @@ dos2unix ./triggerGHR/config/*
 chmod +x ./triggerGHR/triggerGHR.sh
 chmod +x ./dockerfile/pull-image-mcr.sh
 # Pull down docker container from MCR
+# Wrap the MCR pull with retrycmd_if_failure: MCR rate-limits anonymous
+# docker pulls per source IP, and 1ES agent IPs are shared across many
+# concurrent builds — transient "Too many requests" 429s are common.
+# 10 retries x 30s wait = up to 5 min of backoff before giving up.
 if [ "${GPU_PLAT}" = "AMD" ]; then
-   ./dockerfile/pull-image-mcr.sh rocm
+   retrycmd_if_failure 10 30 600 ./dockerfile/pull-image-mcr.sh rocm
 else
    sed -i 's/\* || check_gpu_bw 10/\* || check_gpu_bw 9/' ./conf/nd40rs_v2.conf
    sed -i 's#\* || check_nccl_allreduce 431.0 1 16G $AZ_NHC_ROOT/topofiles/ndv5-topo.xml#\* || check_nccl_allreduce 431.0 1 16G#' ./conf/nd96isr_h200_v5.conf
    sed -i 's#\* || check_nccl_allreduce 460.0 1 16G $AZ_NHC_ROOT/topofiles/ndv5-topo.xml#\* || check_nccl_allreduce 460.0 1 16G#' ./conf/nd96isr_h100_v5.conf
-   ./dockerfile/pull-image-mcr.sh cuda
+   retrycmd_if_failure 10 30 600 ./dockerfile/pull-image-mcr.sh cuda
 fi
 popd
 popd
