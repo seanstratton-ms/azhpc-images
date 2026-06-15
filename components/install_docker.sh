@@ -4,7 +4,23 @@ set -ex
 source ${UTILS_DIR}/utilities.sh
 
 # Install Moby Engine and CLI
-if [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
+if [[ $DISTRIBUTION == *"debian"* ]]; then
+    # Microsoft's PMC (packages.microsoft.com/debian/13/prod/trixie) does
+    # not currently publish moby-* packages — only the Ubuntu PMC does.
+    # Use upstream Docker CE from download.docker.com/linux/debian, which
+    # is well-maintained for trixie and ships the same binaries
+    # (/usr/bin/docker, /usr/bin/dockerd) that moby provides. Swap back
+    # to apt-get install -y moby-engine once MS publishes moby-* for
+    # debian/13/prod. Tracked as Task 393 follow-up.
+    install -d -m 0755 /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/debian/gpg \
+        -o /etc/apt/keyrings/docker.asc
+    chmod a+r /etc/apt/keyrings/docker.asc
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+        > /etc/apt/sources.list.d/docker.list
+    apt-get update
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
+elif [[ $DISTRIBUTION == *"ubuntu"* ]]; then
     if [[ "$ARCHITECTURE" == "aarch64" && "${NODE_TYPE:-azure-vm}" == "baremetal" ]]; then
         # Baremetal aarch64: pin to a specific moby version from the baremetal package repo.
         moby_metadata=$(get_component_config "moby")
@@ -55,7 +71,10 @@ ctr plugin ls
 docker_version=$(docker --version | awk -F' ' '{print $3}')
 write_component_version "DOCKER" ${docker_version::-1}
 
-if [[ $DISTRIBUTION == ubuntu* || $DISTRIBUTION == *"debian"* ]]; then
+if [[ $DISTRIBUTION == *"debian"* ]]; then
+    # docker-ce instead of moby-engine on debian (see top of file).
+    moby_version=$(apt list --installed 2>/dev/null | grep '^docker-ce/' | awk -F' ' '{print $2}')
+elif [[ $DISTRIBUTION == ubuntu* ]]; then
     moby_version=$(apt list --installed | grep moby-engine | awk -F' ' '{print $2}')
 elif [[ $DISTRIBUTION == "azurelinux3.0" ]]; then
     moby_version=$(rpm -qa | grep moby | cut -d'-' -f3,4)
