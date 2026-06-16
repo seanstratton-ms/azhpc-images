@@ -7,7 +7,6 @@ nvidia_metadata=$(get_component_config "nvidia")
 
 if [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
     # Install from NVIDIA APT repo (already configured during driver installation)
-    # Pinning package ensures the correct version is installed
     NVIDIA_DRIVER_VERSION=$(jq -r '.driver.version' <<< $nvidia_metadata)
     NVIDIA_DRIVER_MAJOR=$(echo $NVIDIA_DRIVER_VERSION | cut -d '.' -f1)
 
@@ -17,7 +16,30 @@ if [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
         PACKAGE_NAME="nvidia-fabricmanager-${NVIDIA_DRIVER_MAJOR}"
     fi
 
-    apt install -y ${PACKAGE_NAME}
+    # Fabric Manager must match the installed NVIDIA kernel driver EXACTLY, or
+    # nv-fabricmanager fails with "failed to allocate handle (client) to NVIDIA
+    # GPU driver" (build 33208). On Debian the driver is pinned to
+    # ${NVIDIA_DRIVER_VERSION} (install_nvidiagpudriver.sh), but FM here was
+    # installed unpinned and resolved to a newer build (driver 590.44.01 vs FM
+    # 590.48.01), which broke the handshake. Pin FM to the same upstream
+    # version where the driver is pinned (Debian). Ubuntu installs the driver
+    # unpinned (latest), so FM stays unpinned there to match.
+    if [[ $DISTRIBUTION == *"debian"* ]]; then
+        # Resolve the exact apt candidate whose upstream version matches the
+        # pinned driver (deb revisions may differ, e.g. -1 vs -2).
+        FM_PINNED_VERSION=$(apt-cache madison ${PACKAGE_NAME} 2>/dev/null \
+            | awk '{print $3}' | grep -E "^${NVIDIA_DRIVER_VERSION}-" | head -1)
+        if [[ -n "${FM_PINNED_VERSION}" ]]; then
+            echo "Pinning ${PACKAGE_NAME} to ${FM_PINNED_VERSION} to match driver ${NVIDIA_DRIVER_VERSION}"
+            apt install -y --allow-downgrades ${PACKAGE_NAME}=${FM_PINNED_VERSION}
+        else
+            echo "##[error]No ${PACKAGE_NAME} build matching driver ${NVIDIA_DRIVER_VERSION} in apt repo; refusing to install a mismatched Fabric Manager"
+            apt-cache madison ${PACKAGE_NAME} 2>/dev/null || true
+            exit 1
+        fi
+    else
+        apt install -y ${PACKAGE_NAME}
+    fi
 
     # Read back installed version for the component manifest
     NVIDIA_FABRICMANAGER_VERSION=$(dpkg-query -W -f='${Version}' ${PACKAGE_NAME})
