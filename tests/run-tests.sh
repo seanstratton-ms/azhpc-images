@@ -122,6 +122,16 @@ function initiate_test_suite {
 # must go through sudo or polkit will reject it with "Interactive
 # authentication required".
 function ensure_nvidia_fabricmanager_active {
+    # Build/platform decoupling: on Debian we do NOT start the NVSwitch fabric
+    # manager at image-build time. Fabric Manager is a platform-runtime service
+    # (it needs the live NVSwitch fabric + a running driver on the target node);
+    # validating it belongs in the runtime validation pipeline, not the build.
+    # The package remains installed and systemd-enabled, so it starts on the
+    # real target at boot.
+    if [[ "${DISTRIBUTION:-}" == debian* ]]; then
+        echo "Debian build: skipping build-time nvidia-fabricmanager start (deferred to runtime validation)"
+        return 0
+    fi
     # Match the same SKU set used by verify_nvidia_fabricmanager_service:
     # NDv4 A100 (NVSwitch) and NDv5 H100/H200 (NVSwitch).
     if ! sku_has_nvswitch; then

@@ -354,7 +354,7 @@ function verify_dnf_conf {
 
 function verify_package_updates {
     case ${ID} in
-        ubuntu)
+        ubuntu|debian)
             if [[ "${SKU_FAMILY:-}" == "gb-family" ]]; then
                 sudo apt -s upgrade 2> /dev/null
                 # num_upgradable=$(sudo apt -s upgrade 2>/dev/null | grep -oP '^\K[0-9]+(?= upgraded,)')
