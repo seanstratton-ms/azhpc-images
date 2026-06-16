@@ -28,6 +28,19 @@ chmod +x ./dockerfile/pull-image-mcr.sh
 # docker pulls per source IP, and 1ES agent IPs are shared across many
 # concurrent builds — transient "Too many requests" 429s are common.
 # 10 retries x 30s wait = up to 5 min of backoff before giving up.
+retrycmd_if_failure() {
+    retries=$1; wait_sleep=$2; timeout=$3; shift && shift && shift
+    for i in $(seq 1 $retries); do
+        timeout $timeout "${@}" && break || \
+        if [ $i -eq $retries ]; then
+            echo Executed \"$@\" $i times;
+            return 1
+        else
+            sleep $wait_sleep
+        fi
+    done
+    echo Executed \"$@\" $i times;
+}
 if [ "${GPU_PLAT}" = "AMD" ]; then
    retrycmd_if_failure 10 30 600 ./dockerfile/pull-image-mcr.sh rocm
 else
