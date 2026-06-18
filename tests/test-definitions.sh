@@ -43,6 +43,26 @@ function has_infiniband {
     ! _is_ncv6_sku
 }
 
+# Print IB port status using whichever tool is available, regardless of the
+# caller's PATH. infiniband-diags installs ibstat/ibstatus under /usr/sbin (and
+# /sbin), which is NOT on the default non-interactive SSH PATH on Debian
+# (Ubuntu includes /usr/sbin, which is why this only bit Debian). rdma-core 59+
+# also stopped packaging the legacy ibstatus script in some distros, so we try
+# ibstatus first and fall back to ibstat. Both print "LinkUp" for an up port.
+function _ib_link_status {
+    local tool
+    for tool in ibstatus ibstat; do
+        local p
+        for p in "$tool" "/usr/sbin/${tool}" "/sbin/${tool}" "/usr/bin/${tool}" "/bin/${tool}"; do
+            if command -v "$p" >/dev/null 2>&1; then
+                "$p" 2>/dev/null && return 0
+            fi
+        done
+    done
+    echo "_ib_link_status: neither ibstatus nor ibstat found on the image" >&2
+    return 127
+}
+
 function has_nvlink {
     ! _is_ncv6_sku
 }
@@ -75,20 +95,14 @@ function verify_ib_device_status {
 
     if [[ "${NODE_TYPE:-azure-vm}" == "baremetal" ]]; then
         # Baremetal GB200/GB300: Verify IB devices are active and LinkUp
-        # Prefer ibstatus; fall back to ibstat where the legacy ibstatus
-        # script isn't packaged (e.g. Debian's DOCA infiniband-diags / rdma-core
-        # 59+). Both print "LinkUp" for an up port.
-        { ibstatus 2>/dev/null || ibstat; } | grep "LinkUp"
+        _ib_link_status | grep "LinkUp"
         check_exit_code "IB devices are active and LinkUp" "IB Link is DOWN"
 
         ! ifconfig | grep "ib[[:digit:]]:\|ibP"
         check_exit_code "IB Links are Down" "IB Links are Brought Up unexpectedly"
     else
         # Azure HPC VMs: IB device should be up and configured
-        # Prefer ibstatus; fall back to ibstat where the legacy ibstatus
-        # script isn't packaged (e.g. Debian's DOCA infiniband-diags / rdma-core
-        # 59+). Both print "LinkUp" for an up port.
-        { ibstatus 2>/dev/null || ibstat; } | grep "LinkUp"
+        _ib_link_status | grep "LinkUp"
         check_exit_code "IB device state: LinkUp" "IB link not up"
 
         ifconfig | grep "ib[[:digit:]]:\|ibP"
