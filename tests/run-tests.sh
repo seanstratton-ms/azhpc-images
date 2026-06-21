@@ -146,8 +146,16 @@ function ensure_nvidia_fabricmanager_active {
     if systemctl is-active --quiet nvidia-fabricmanager.service; then
         return 0
     fi
-    echo "Starting nvidia-fabricmanager.service for build-time validation..."
-    sudo -n systemctl start nvidia-fabricmanager.service || true
+    # FM commonly fails at BOOT on Debian A100 nodes because systemd starts it
+    # before the NVIDIA driver is fully initialized ("failed to allocate handle
+    # (client) to NVIDIA GPU driver"). That leaves the unit in a failed state
+    # with the start-limit tripped, so a plain `systemctl start` is a no-op and
+    # never recovers even once the driver is ready. Clear the failed/start-limit
+    # state first, then `restart` to force a fresh attempt now that the driver
+    # is up.
+    echo "Starting nvidia-fabricmanager.service for runtime validation..."
+    sudo -n systemctl reset-failed nvidia-fabricmanager.service 2>/dev/null || true
+    sudo -n systemctl restart nvidia-fabricmanager.service || true
     # Wait up to 60s for FM to reach active state and complete fabric setup.
     local retries=0
     while ! systemctl is-active --quiet nvidia-fabricmanager.service; do
