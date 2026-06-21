@@ -98,14 +98,14 @@ function verify_ib_device_status {
         _ib_link_status | grep "LinkUp"
         check_exit_code "IB devices are active and LinkUp" "IB Link is DOWN"
 
-        ! ifconfig | grep "ib[[:digit:]]:\|ibP"
+        ! ip -o addr show | grep -E "\bib[[:digit:]]|ibP"
         check_exit_code "IB Links are Down" "IB Links are Brought Up unexpectedly"
     else
         # Azure HPC VMs: IB device should be up and configured
         _ib_link_status | grep "LinkUp"
         check_exit_code "IB device state: LinkUp" "IB link not up"
 
-        ifconfig | grep "ib[[:digit:]]:\|ibP"
+        ip -o addr show | grep -E "\bib[[:digit:]]|ibP"
         check_exit_code "IB device is configured" "IB device not configured"
     fi
 
