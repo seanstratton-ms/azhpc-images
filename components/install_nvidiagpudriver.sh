@@ -73,6 +73,41 @@ elif [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
     # Remove unused configuration file if created by the NVIDIA driver package
     rm -f /etc/modprobe.d/nvidia-graphics-drivers-kms.conf
 
+    # --- Debian build/boot kernel reconciliation -------------------------------
+    # The image-build VM never reboots, so nvidia-open's DKMS module is built
+    # against the *running* kernel ($(uname -r)). But earlier build steps install
+    # a NEWER kernel that becomes the GRUB default and is what the captured image
+    # actually boots:
+    #   * `apt-get upgrade` (set_properties.sh) bumps linux-image-cloud-amd64, and
+    #   * `doca-ofed` Depends on the generic linux-headers-amd64 meta, dragging in
+    #     linux-image-<newer>-amd64.
+    # The shipped image then boots a kernel with no nvidia.ko, so at runtime
+    # `nvidia-smi` reports "couldn't communicate with the NVIDIA driver" and every
+    # GPU check (Fabric Manager, gpu-burn, DCGM) fails — hpc-image-val2 build 33701.
+    # Ubuntu is unaffected because it holds linux-azure-<ver> so running == shipped.
+    # Rebuild + install the nvidia DKMS module(s) for the newest installed kernel
+    # (the one GRUB boots). We target nvidia specifically (not `dkms autoinstall`)
+    # so a pre-existing OFED DKMS state (e.g. knem "already installed") cannot
+    # prevent nvidia.ko from being produced for the shipped kernel.
+    if [[ $DISTRIBUTION == *"debian"* ]]; then
+        run_kernel="$(uname -r)"
+        boot_kernel="$(ls -1 /lib/modules 2>/dev/null | sort -V | tail -1)"
+        if [[ -n "$boot_kernel" && "$boot_kernel" != "$run_kernel" ]]; then
+            echo "NVIDIA DKMS built for running kernel ${run_kernel}; rebuilding for image boot kernel ${boot_kernel}"
+            apt-get install -y "linux-headers-${boot_kernel}" || true
+            dkms status 2>/dev/null | grep -iE '(^| )nvidia' | while IFS= read -r _nv_line; do
+                _nv_mod="$(sed -E 's#^([^/,]+)[/,].*#\1#' <<< "$_nv_line")"
+                _nv_ver="$(sed -E 's#^[^/]+/([^,]+),.*#\1#' <<< "$_nv_line")"
+                [[ -n "$_nv_mod" && -n "$_nv_ver" ]] || continue
+                echo "  dkms (re)build ${_nv_mod}/${_nv_ver} -k ${boot_kernel}"
+                dkms build  -m "$_nv_mod" -v "$_nv_ver" -k "$boot_kernel" --force || true
+                dkms install -m "$_nv_mod" -v "$_nv_ver" -k "$boot_kernel" --force || true
+            done
+            update-initramfs -u -k "$boot_kernel" || true
+        fi
+    fi
+    # ---------------------------------------------------------------------------
+
     # Apply nvprofiling settings
     echo 'options nvidia NVreg_RestrictProfilingToAdminUsers=0' | tee /etc/modprobe.d/nvprofiling.conf
 
