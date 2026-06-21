@@ -44,12 +44,35 @@ if [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
     else
         # Azure VM: pin the kernel package to prevent unintended kernel upgrades,
         # then upgrade all other pre-installed components.
-        if [[ $DISTRIBUTION != *"debian"* ]]; then
-            if [[ "${SKU_FAMILY}" == "gb-family" ]]; then
-                apt-mark hold linux-azure-nvidia
+        #
+        # This pin is REQUIRED for GPU SKUs: the NVIDIA driver (nvidia-open on
+        # Debian, the .run/DKMS installer elsewhere) builds its kernel module
+        # via DKMS against the *running* kernel. If `apt-get upgrade` then pulls
+        # a newer kernel meta-package, the captured image boots a kernel for
+        # which no nvidia.ko was built, and every GPU check fails at runtime
+        # with "NVIDIA-SMI ... couldn't communicate with the NVIDIA driver"
+        # (driver not loaded). Debian was previously excluded from this guard,
+        # so `apt-get upgrade` bumped the kernel (e.g. 6.12.90 -> 6.12.94) out
+        # from under the freshly-built DKMS module — pin it like Ubuntu does.
+        if [[ $DISTRIBUTION == *"debian"* ]]; then
+            # Debian's kernel is driven by the linux-image/linux-headers cloud
+            # meta-packages; holding them keeps the booted kernel == the kernel
+            # the NVIDIA DKMS module is built against. Hold every installed
+            # linux-image*/linux-headers* meta (cloud + generic) so the upgrade
+            # cannot swap the kernel regardless of the exact flavour name.
+            kernel_metas=$(dpkg-query -W -f='${Package}\n' \
+                'linux-image-*-amd64' 'linux-headers-*-amd64' 2>/dev/null \
+                | grep -E '^linux-(image|headers)-(cloud-|rt-|)amd64$' || true)
+            if [[ -n "${kernel_metas}" ]]; then
+                apt-mark hold ${kernel_metas} || true
             else
-                apt-mark hold linux-azure-${KERNEL_VERSION:-6.8}
+                # Fallback to the standard Debian cloud meta names.
+                apt-mark hold linux-image-cloud-amd64 linux-headers-cloud-amd64 2>/dev/null || true
             fi
+        elif [[ "${SKU_FAMILY}" == "gb-family" ]]; then
+            apt-mark hold linux-azure-nvidia
+        else
+            apt-mark hold linux-azure-${KERNEL_VERSION:-6.8}
         fi
         apt-get update
         apt-get upgrade -y
