@@ -82,9 +82,22 @@ elif [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
         # hangs the job forever (build 33778 hung ~3h). Use a unique filename.
         cat > /etc/apt/preferences.d/azhpc-nvidia-driver-closure-pin <<EOF
 # Pin the NVIDIA driver closure to the metadata driver version so the kernel
-# module + user-mode libraries match the image CUDA toolkit. Version-glob is
-# self-limiting: only packages that publish ${NVIDIA_DRIVER_VERSION} are bound.
-Package: nvidia-driver* nvidia-kernel-open-dkms nvidia-kernel-dkms nvidia-kernel-support nvidia-modprobe nvidia-persistenced nvidia-settings nvidia-xconfig nvidia-egl-icd nvidia-vulkan-icd nvidia-vdpau-driver nvidia-opencl-icd libnvidia-* libcuda1 libcudadebugger1 firmware-nvidia-gsp
+# module + user-mode libraries match the image CUDA toolkit.
+#
+# Package: * is intentional and SAFE here because the pin is version-scoped:
+# Pin-Priority 1001 is only granted to versions matching ${NVIDIA_DRIVER_VERSION}*,
+# and the only packages in the Debian archive that publish such a version are the
+# NVIDIA 590.44.01 driver closure. Every other package (glibc, bash, the CUDA
+# toolkit at 13.x, nvidia-container-toolkit at 1.x, etc.) has no matching version
+# so the pin is inert for it and it floats normally.
+#
+# An enumerated Package list was tried first (build 33802) and FAILED: the driver
+# closure has members that are easy to miss (libglx-nvidia0, libxnvctrl0,
+# nvidia-driver-libs, nvidia-driver-cuda). Listing a subset forced part of the
+# closure to 590.44.01 while the rest floated to 590.48.01, which apt could not
+# reconcile ("you have held broken packages"). Pinning by version across all
+# packages closes every gap with no whack-a-mole.
+Package: *
 Pin: version ${NVIDIA_DRIVER_VERSION}*
 Pin-Priority: 1001
 EOF
