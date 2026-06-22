@@ -73,7 +73,14 @@ elif [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
             apt-cache madison nvidia-kernel-open-dkms 2>/dev/null || true
             exit 1
         fi
-        cat > /etc/apt/preferences.d/nvidia-driver-pin <<EOF
+        # NOTE: do NOT name this file nvidia-driver-pin — the
+        # nvidia-driver-pinning-<major> package ships its own
+        # /etc/apt/preferences.d/nvidia-driver-pin, and a pre-existing file at
+        # that exact path triggers an interactive dpkg conffile prompt
+        # ("File also in package provided by package maintainer") when that
+        # package is installed below. In a non-interactive build that prompt
+        # hangs the job forever (build 33778 hung ~3h). Use a unique filename.
+        cat > /etc/apt/preferences.d/azhpc-nvidia-driver-closure-pin <<EOF
 # Pin the NVIDIA driver closure to the metadata driver version so the kernel
 # module + user-mode libraries match the image CUDA toolkit. Version-glob is
 # self-limiting: only packages that publish ${NVIDIA_DRIVER_VERSION} are bound.
@@ -81,7 +88,7 @@ Package: nvidia-driver* nvidia-kernel-open-dkms nvidia-kernel-dkms nvidia-kernel
 Pin: version ${NVIDIA_DRIVER_VERSION}*
 Pin-Priority: 1001
 EOF
-        echo "Pinned NVIDIA driver closure to ${NVIDIA_DRIVER_VERSION} via /etc/apt/preferences.d/nvidia-driver-pin"
+        echo "Pinned NVIDIA driver closure to ${NVIDIA_DRIVER_VERSION} via /etc/apt/preferences.d/azhpc-nvidia-driver-closure-pin"
     fi
 
     # Pin the driver version and install via APT packages.
@@ -90,10 +97,14 @@ EOF
     # (nvidia-driver-pinning-590.44.01), so fall back to the major when
     # the full-version package is unavailable.
     NVIDIA_DRIVER_MAJOR_VERSION=$(jq -r '.driver.major_version // empty' <<< $nvidia_metadata)
+    # Use noninteractive + keep-old conffile options so a dpkg conffile prompt
+    # (e.g. from the pinning package's own preferences file) can never hang a
+    # non-interactive build.
+    _apt_noninteractive="DEBIAN_FRONTEND=noninteractive apt -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold"
     if [[ $DISTRIBUTION == *"debian"* && -n "${NVIDIA_DRIVER_MAJOR_VERSION}" ]]; then
-        apt install nvidia-driver-pinning-${NVIDIA_DRIVER_MAJOR_VERSION} -y
+        eval ${_apt_noninteractive} install nvidia-driver-pinning-${NVIDIA_DRIVER_MAJOR_VERSION} -y
     else
-        apt install nvidia-driver-pinning-${NVIDIA_DRIVER_VERSION} -y
+        eval ${_apt_noninteractive} install nvidia-driver-pinning-${NVIDIA_DRIVER_VERSION} -y
     fi
     if [ "$SKU" = "V100" ]; then
         # V100 requires proprietary kernel modules
