@@ -47,6 +47,43 @@ elif [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
     dpkg -i ./cuda-keyring_1.1-1_all.deb
     apt-get update
 
+    # Pin the ENTIRE NVIDIA driver closure to the metadata driver version on
+    # Debian, not just the nvidia-open meta-package. `apt install
+    # nvidia-open=<ver>-1` only constrains the (tiny) meta-package; its
+    # dependencies (nvidia-kernel-open-dkms — the real kmod — plus
+    # nvidia-driver*, libcuda1, libnvidia-*, firmware-nvidia-gsp) are loosely
+    # versioned, so apt floats them to the newest patch in the major series.
+    # That shipped driver 590.48.01 (whose user-mode stack only advertises
+    # CUDA 13.1) against the image's CUDA 13.2.78 toolkit, so every CUDA app
+    # failed at runtime with "the provided PTX was compiled with an unsupported
+    # toolchain" (gpu-burn), NVBandwidth error 1, and NCCL all-reduce hangs
+    # (hpc-image-val2 build 33765). Pin the whole closure to the matching
+    # ${NVIDIA_DRIVER_VERSION} so the driver pairs with the CUDA toolkit.
+    #
+    # A version-glob pin is self-limiting: it only binds packages that actually
+    # publish a ${NVIDIA_DRIVER_VERSION} build, so independently-versioned NVIDIA
+    # packages (nvidia-container-toolkit, libnvidia-egl-wayland1,
+    # nvidia-driver-pinning-590, etc.) are untouched.
+    if [[ $DISTRIBUTION == *"debian"* ]]; then
+        # Refuse to build a mismatched image: the exact driver build must exist
+        # in the repo, or pinning would silently fall back to the floated patch.
+        if ! apt-cache madison nvidia-kernel-open-dkms 2>/dev/null \
+                | awk '{print $3}' | grep -qE "^${NVIDIA_DRIVER_VERSION}-"; then
+            echo "##[error]No nvidia-kernel-open-dkms build matching driver ${NVIDIA_DRIVER_VERSION} in apt repo; refusing to pin a mismatched NVIDIA driver closure"
+            apt-cache madison nvidia-kernel-open-dkms 2>/dev/null || true
+            exit 1
+        fi
+        cat > /etc/apt/preferences.d/nvidia-driver-pin <<EOF
+# Pin the NVIDIA driver closure to the metadata driver version so the kernel
+# module + user-mode libraries match the image CUDA toolkit. Version-glob is
+# self-limiting: only packages that publish ${NVIDIA_DRIVER_VERSION} are bound.
+Package: nvidia-driver* nvidia-kernel-open-dkms nvidia-kernel-dkms nvidia-kernel-support nvidia-modprobe nvidia-persistenced nvidia-settings nvidia-xconfig nvidia-egl-icd nvidia-vulkan-icd nvidia-vdpau-driver nvidia-opencl-icd libnvidia-* libcuda1 libcudadebugger1 firmware-nvidia-gsp
+Pin: version ${NVIDIA_DRIVER_VERSION}*
+Pin-Priority: 1001
+EOF
+        echo "Pinned NVIDIA driver closure to ${NVIDIA_DRIVER_VERSION} via /etc/apt/preferences.d/nvidia-driver-pin"
+    fi
+
     # Pin the driver version and install via APT packages.
     # Debian's NVIDIA repo only ships major-version pinning packages
     # (e.g. nvidia-driver-pinning-590) and not full-version variants
@@ -63,8 +100,9 @@ elif [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
         apt install cuda-drivers -y
     elif [[ $DISTRIBUTION == *"debian"* ]]; then
         # Pin the specific driver version on Debian since we install by
-        # major-version repo metadata.
-        apt install -y nvidia-open=${NVIDIA_DRIVER_VERSION}-1
+        # major-version repo metadata. The preferences.d pin above forces the
+        # whole dependency closure to the same ${NVIDIA_DRIVER_VERSION}.
+        apt install -y --allow-downgrades nvidia-open=${NVIDIA_DRIVER_VERSION}-1
     else
         # A100, H100, H200 use open kernel modules
         apt install nvidia-open -y

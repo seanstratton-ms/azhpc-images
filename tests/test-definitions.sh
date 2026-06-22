@@ -109,9 +109,23 @@ function verify_ib_device_status {
         check_exit_code "IB device is configured" "IB device not configured"
     fi
 
-    #verify hostname -i returns IP address only
-    hostname -i | grep -E "^([[:digit:]]{1,3}[\.]){3}[[:digit:]]{1,3}$"
-    check_exit_code "Hostname -i returns IP address" "Hostname -i does not return IP address"
+    #verify hostname resolves to / yields a single IPv4 address
+    # `hostname -i` does a resolver lookup of the node's hostname. On Ubuntu the
+    # cloud image ships the Debian/Ubuntu `127.0.1.1 <hostname>` line in
+    # /etc/hosts so this returns a clean IPv4; the Debian cloud image omits that
+    # line, so `hostname -i` returns nothing (or an IPv6/loopback) and the check
+    # failed even though the node has a valid primary IPv4 (hpc-image-val2 build
+    # 33765). Fall back to `hostname -I` (capital: lists configured interface
+    # addresses, no resolver dependency) and validate its first token is IPv4,
+    # which is distro-agnostic and still confirms the node has a usable primary
+    # IPv4 for MPI/pdsh.
+    local _host_ip
+    _host_ip="$(hostname -i 2>/dev/null | tr ' ' '\n' | grep -E '^([[:digit:]]{1,3}[.]){3}[[:digit:]]{1,3}$' | head -1)"
+    if [[ -z "${_host_ip}" ]]; then
+        _host_ip="$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^([[:digit:]]{1,3}[.]){3}[[:digit:]]{1,3}$' | head -1)"
+    fi
+    [[ -n "${_host_ip}" ]]
+    check_exit_code "Hostname resolves to IP address (${_host_ip:-none})" "Hostname does not yield an IPv4 address"
 }
 
 function verify_hpcx_installation {
