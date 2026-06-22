@@ -18,22 +18,41 @@ if [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
 
     # Fabric Manager must match the installed NVIDIA kernel driver EXACTLY, or
     # nv-fabricmanager fails with "failed to allocate handle (client) to NVIDIA
-    # GPU driver" (build 33208). On Debian the driver is pinned to
-    # ${NVIDIA_DRIVER_VERSION} (install_nvidiagpudriver.sh), but FM here was
-    # installed unpinned and resolved to a newer build (driver 590.44.01 vs FM
-    # 590.48.01), which broke the handshake. Pin FM to the same upstream
-    # version where the driver is pinned (Debian). Ubuntu installs the driver
-    # unpinned (latest), so FM stays unpinned there to match.
+    # GPU driver" (build 33208) or "driver interface version X don't match with
+    # driver version Y" (hpc-image-val2 build 33746).
+    #
+    # On Debian we pin FM to the ACTUALLY INSTALLED driver, not the metadata
+    # version: `apt install nvidia-open=<metadata>-1` only pins the (tiny)
+    # nvidia-open META-package; its dependency nvidia-kernel-open-dkms (the real
+    # kernel driver) is unpinned and apt resolves it to the newest patch in the
+    # 590 series (e.g. metadata says 590.44.01 but the loaded driver — and the
+    # consistent userspace libs that nvidia-smi reports — are 590.48.01).
+    # Deriving the FM pin from stale metadata produced FM 590.44.01 against a
+    # 590.48.01 driver. Read the installed driver back from dpkg so FM always
+    # tracks whatever the driver actually resolved to.
     if [[ $DISTRIBUTION == *"debian"* ]]; then
+        # Prefer the installed open kernel module's upstream version; fall back
+        # to the proprietary kmod package, then to metadata as a last resort.
+        INSTALLED_DRIVER_VERSION=""
+        for _drv_pkg in nvidia-kernel-open-dkms nvidia-kernel-dkms nvidia-open; do
+            _v=$(dpkg-query -W -f='${Version}' "${_drv_pkg}" 2>/dev/null | sed -E 's/-[^-]*$//')
+            if [[ -n "${_v}" ]]; then
+                INSTALLED_DRIVER_VERSION="${_v}"
+                echo "Detected installed NVIDIA driver ${INSTALLED_DRIVER_VERSION} (from ${_drv_pkg})"
+                break
+            fi
+        done
+        DRIVER_VERSION_FOR_FM="${INSTALLED_DRIVER_VERSION:-${NVIDIA_DRIVER_VERSION}}"
+
         # Resolve the exact apt candidate whose upstream version matches the
-        # pinned driver (deb revisions may differ, e.g. -1 vs -2).
+        # installed driver (deb revisions may differ, e.g. -1 vs -2).
         FM_PINNED_VERSION=$(apt-cache madison ${PACKAGE_NAME} 2>/dev/null \
-            | awk '{print $3}' | grep -E "^${NVIDIA_DRIVER_VERSION}-" | head -1)
+            | awk '{print $3}' | grep -E "^${DRIVER_VERSION_FOR_FM}-" | head -1)
         if [[ -n "${FM_PINNED_VERSION}" ]]; then
-            echo "Pinning ${PACKAGE_NAME} to ${FM_PINNED_VERSION} to match driver ${NVIDIA_DRIVER_VERSION}"
+            echo "Pinning ${PACKAGE_NAME} to ${FM_PINNED_VERSION} to match installed driver ${DRIVER_VERSION_FOR_FM}"
             apt install -y --allow-downgrades ${PACKAGE_NAME}=${FM_PINNED_VERSION}
         else
-            echo "##[error]No ${PACKAGE_NAME} build matching driver ${NVIDIA_DRIVER_VERSION} in apt repo; refusing to install a mismatched Fabric Manager"
+            echo "##[error]No ${PACKAGE_NAME} build matching installed driver ${DRIVER_VERSION_FOR_FM} in apt repo; refusing to install a mismatched Fabric Manager"
             apt-cache madison ${PACKAGE_NAME} 2>/dev/null || true
             exit 1
         fi
