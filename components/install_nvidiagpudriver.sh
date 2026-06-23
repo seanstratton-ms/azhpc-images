@@ -47,58 +47,35 @@ elif [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
     dpkg -i ./cuda-keyring_1.1-1_all.deb
     apt-get update
 
-    # Pin the ENTIRE NVIDIA driver closure to the metadata driver version on
+    # Force the ENTIRE NVIDIA driver closure to the metadata driver version on
     # Debian, not just the nvidia-open meta-package. `apt install
     # nvidia-open=<ver>-1` only constrains the (tiny) meta-package; its
     # dependencies (nvidia-kernel-open-dkms — the real kmod — plus
     # nvidia-driver*, libcuda1, libnvidia-*, firmware-nvidia-gsp) are loosely
-    # versioned, so apt floats them to the newest patch in the major series.
-    # That shipped driver 590.48.01 (whose user-mode stack only advertises
-    # CUDA 13.1) against the image's CUDA 13.2.78 toolkit, so every CUDA app
-    # failed at runtime with "the provided PTX was compiled with an unsupported
-    # toolchain" (gpu-burn), NVBandwidth error 1, and NCCL all-reduce hangs
-    # (hpc-image-val2 build 33765). Pin the whole closure to the matching
-    # ${NVIDIA_DRIVER_VERSION} so the driver pairs with the CUDA toolkit.
+    # versioned (>=), so apt floats them to the newest patch available. That
+    # shipped driver 590.48.01 (whose user-mode stack only advertises CUDA 13.1)
+    # against the image's CUDA 13.2.78 toolkit, so every CUDA app failed at
+    # runtime: "the provided PTX was compiled with an unsupported toolchain"
+    # (gpu-burn), NVBandwidth error 1, NCCL all-reduce hangs (hpc-image-val2
+    # build 33765). The closure must pair with the image CUDA toolkit.
     #
-    # A version-glob pin is self-limiting: it only binds packages that actually
-    # publish a ${NVIDIA_DRIVER_VERSION} build, so independently-versioned NVIDIA
-    # packages (nvidia-container-toolkit, libnvidia-egl-wayland1,
-    # nvidia-driver-pinning-590, etc.) are untouched.
+    # We do NOT use an /etc/apt/preferences.d pin here. Debian 13 ships apt 3.0,
+    # whose preferences parser rejected our version-glob pin with
+    # "Warning: Did not understand pin type version" and silently discarded it,
+    # letting the closure float (build 33812 -> 590.48.01 with the branch pin,
+    # build 33854 -> 610.43.02 once the branch pin was removed). Instead we pin
+    # deterministically with an explicit, single-transaction versioned install of
+    # every closure member after the meta-package is installed (see below). That
+    # is parser-independent and cannot be silently ignored.
     if [[ $DISTRIBUTION == *"debian"* ]]; then
         # Refuse to build a mismatched image: the exact driver build must exist
-        # in the repo, or pinning would silently fall back to the floated patch.
+        # in the repo, or the closure cannot be forced to the metadata version.
         if ! apt-cache madison nvidia-kernel-open-dkms 2>/dev/null \
                 | awk '{print $3}' | grep -qE "^${NVIDIA_DRIVER_VERSION}-"; then
-            echo "##[error]No nvidia-kernel-open-dkms build matching driver ${NVIDIA_DRIVER_VERSION} in apt repo; refusing to pin a mismatched NVIDIA driver closure"
+            echo "##[error]No nvidia-kernel-open-dkms build matching driver ${NVIDIA_DRIVER_VERSION} in apt repo; refusing to build a mismatched NVIDIA driver closure"
             apt-cache madison nvidia-kernel-open-dkms 2>/dev/null || true
             exit 1
         fi
-        # NOTE: do NOT name this file nvidia-driver-pin — the
-        # nvidia-driver-pinning-<major> package ships its own
-        # /etc/apt/preferences.d/nvidia-driver-pin, and a pre-existing file at
-        # that exact path triggers an interactive dpkg conffile prompt
-        # ("File also in package provided by package maintainer") when that
-        # package is installed below. In a non-interactive build that prompt
-        # hangs the job forever (build 33778 hung ~3h). Use a unique filename.
-        # IMPORTANT: the generated preferences file must contain ONLY the pin
-        # stanza — no inline '#' comments. Debian 13's apt 3.0 preferences parser
-        # mishandles comment lines inside a stanza and emits
-        # "Warning: Did not understand pin type version", silently DISCARDING the
-        # whole pin (build 33843: closure floated unpinned to 610.43.02). Keep all
-        # explanation here in the shell script, never in the file.
-        #
-        # Package: * is intentional and SAFE because the pin is version-scoped:
-        # Pin-Priority 1001 is only granted to versions matching
-        # ${NVIDIA_DRIVER_VERSION}*, and the only packages in the archive that
-        # publish such a version are the NVIDIA driver closure. Every other
-        # package (glibc, CUDA toolkit 13.x, nvidia-container-toolkit 1.x, ...)
-        # has no matching version, so the pin is inert for it and it floats.
-        # An enumerated Package list was tried first (33802) and FAILED because
-        # closure members are easy to miss (libglx-nvidia0, libxnvctrl0,
-        # nvidia-driver-libs, nvidia-driver-cuda); Package: * closes every gap.
-        printf 'Package: *\nPin: version %s*\nPin-Priority: 1001\n' "${NVIDIA_DRIVER_VERSION}" \
-            > /etc/apt/preferences.d/azhpc-nvidia-driver-closure-pin
-        echo "Pinned NVIDIA driver closure to ${NVIDIA_DRIVER_VERSION} via /etc/apt/preferences.d/azhpc-nvidia-driver-closure-pin"
     fi
 
     # Pin the driver version and install via APT packages.
@@ -116,42 +93,60 @@ elif [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
     else
         eval ${_apt_noninteractive} install nvidia-driver-pinning-${NVIDIA_DRIVER_VERSION} -y
     fi
-    if [[ $DISTRIBUTION == *"debian"* ]]; then
-        # The nvidia-driver-pinning-<major> package ships
-        # /etc/apt/preferences.d/nvidia-driver-pin, which pins the driver
-        # packages by SPECIFIC name to the branch-latest patch (e.g. 590.48.01).
-        # apt gives specific-name pin records precedence over wildcard
-        # (Package: *) records regardless of priority, so that file silently
-        # overrode our exact-patch closure pin: build 33812 (image 2606.22.2915)
-        # installed the nvidia-open=590.44.01 META package but floated the whole
-        # closure (nvidia-kernel-open-dkms, nvidia-driver-cuda, libnvidia-*) to
-        # 590.48.01 — reintroducing the CUDA 13.1-vs-13.2 mismatch. Remove the
-        # branch pin so our azhpc-nvidia-driver-closure-pin (Package: *, version
-        # ${NVIDIA_DRIVER_VERSION}*, Pin-Priority 1001) is the only governing
-        # record and forces the complete closure to ${NVIDIA_DRIVER_VERSION}.
-        rm -f /etc/apt/preferences.d/nvidia-driver-pin
-        echo "Removed nvidia-driver-pinning-${NVIDIA_DRIVER_MAJOR_VERSION:-$NVIDIA_DRIVER_VERSION} branch pin so the exact-patch closure pin (${NVIDIA_DRIVER_VERSION}) governs"
-    fi
+    # NOTE: keep the nvidia-driver-pinning-<major> branch pin in place. It pins
+    # the closure to the 590.x branch and acts as a safety floor: even if the
+    # explicit version install below were skipped, the closure can never jump to
+    # a different major (e.g. 610). The explicit install pins the exact patch.
     if [ "$SKU" = "V100" ]; then
         # V100 requires proprietary kernel modules
         apt install cuda-drivers -y
     elif [[ $DISTRIBUTION == *"debian"* ]]; then
-        # Pin the specific driver version on Debian since we install by
-        # major-version repo metadata. The preferences.d pin above forces the
-        # whole dependency closure to the same ${NVIDIA_DRIVER_VERSION}.
+        # Install the (meta) package at the exact metadata version first.
         apt install -y --allow-downgrades nvidia-open=${NVIDIA_DRIVER_VERSION}-1
 
+        # Deterministically force the WHOLE driver closure to the exact metadata
+        # patch. apt's >= dependency constraints otherwise float the kernel
+        # module and user-mode libs to a newer patch (590.48.01 / 610.43.02),
+        # mismatching the image CUDA toolkit. apt 3.0 on Debian 13 ignored an
+        # /etc/apt/preferences.d version pin ("Did not understand pin type
+        # version"), so we pin by explicit, single-transaction versioned install
+        # instead — parser-independent and impossible to silently drop.
+        #
+        # Enumerate every currently-installed package that publishes a
+        # ${NVIDIA_DRIVER_VERSION}-* build (this catches oddly-named closure
+        # members an enumerated list would miss: libxnvctrl0, libglx-nvidia0,
+        # firmware-nvidia-gsp, nvidia-driver-cuda, ...) and reinstall them all at
+        # exactly ${NVIDIA_DRIVER_VERSION} together. One transaction keeps the
+        # closure internally consistent (every `Depends: foo (= <ver>)` is
+        # satisfied), avoiding the partial-pin conflict that broke build 33802.
+        target_pkg_version="${NVIDIA_DRIVER_VERSION}-1"
+        mapfile -t nvidia_closure_pkgs < <(
+            dpkg-query -W -f='${Package}\n' 2>/dev/null | while read -r _pkg; do
+                if apt-cache madison "${_pkg}" 2>/dev/null | awk '{print $3}' \
+                        | grep -qxF "${target_pkg_version}"; then
+                    echo "${_pkg}"
+                fi
+            done
+        )
+        if [[ ${#nvidia_closure_pkgs[@]} -gt 0 ]]; then
+            nvidia_closure_pinned=()
+            for _pkg in "${nvidia_closure_pkgs[@]}"; do
+                nvidia_closure_pinned+=("${_pkg}=${target_pkg_version}")
+            done
+            echo "Forcing NVIDIA driver closure to ${NVIDIA_DRIVER_VERSION}: ${nvidia_closure_pinned[*]}"
+            eval ${_apt_noninteractive} install -y --allow-downgrades "${nvidia_closure_pinned[@]}"
+        fi
+
         # Hard assertion: the REAL driver is the kernel module + user-mode libs,
-        # not the (tiny) nvidia-open meta-package. If the closure floated to a
-        # different patch, the image CUDA toolkit will mismatch the driver at
+        # not the (tiny) nvidia-open meta-package. If the closure still floated to
+        # a different patch, the image CUDA toolkit will mismatch the driver at
         # runtime (gpu-burn PTX / NVBandwidth / NCCL failures) even though the
-        # build is otherwise green. Build 33812 shipped that exact silent
-        # mismatch (meta 590.44.01, closure 590.48.01). Fail the build loudly
-        # here instead of producing a broken image.
+        # build is otherwise green (build 33812 shipped that silent mismatch).
+        # Fail the build loudly here instead of producing a broken image.
         installed_kmod_version=$(dpkg-query -W -f='${Version}' nvidia-kernel-open-dkms 2>/dev/null | sed 's/-[0-9]*$//')
         if [[ "${installed_kmod_version}" != "${NVIDIA_DRIVER_VERSION}" ]]; then
-            echo "##[error]NVIDIA driver closure mismatch: nvidia-kernel-open-dkms is ${installed_kmod_version:-<none>} but the image expects ${NVIDIA_DRIVER_VERSION}. The exact-patch apt pin did not govern the closure; refusing to ship a driver/CUDA-toolkit mismatched image."
-            dpkg-query -W -f='${Package} ${Version}\n' 'nvidia-*' 'libnvidia-*' 2>/dev/null | grep -E '590\.' || true
+            echo "##[error]NVIDIA driver closure mismatch: nvidia-kernel-open-dkms is ${installed_kmod_version:-<none>} but the image expects ${NVIDIA_DRIVER_VERSION}. Refusing to ship a driver/CUDA-toolkit mismatched image."
+            dpkg-query -W -f='${Package} ${Version}\n' 'nvidia-*' 'libnvidia-*' 2>/dev/null | grep -E '5[0-9]{2}\.|6[0-9]{2}\.' || true
             exit 1
         fi
         echo "Verified NVIDIA driver closure resolved to ${NVIDIA_DRIVER_VERSION} (nvidia-kernel-open-dkms ${installed_kmod_version})"
