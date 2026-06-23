@@ -447,8 +447,8 @@
         "debian13": {
             "x86_64": {
                 "driver": {
-                    "version": "590.44.01",
-                    "major_version": "590"
+                    "version": "610.43.02",
+                    "major_version": "610"
                 }
             }
         },
@@ -601,7 +601,7 @@
         "debian13": {
             "x86_64": {
                 "driver": {
-                    "version": "13.2",
+                    "version": "13.0",
                     "distribution": "debian13"
                 },
                 "samples": {

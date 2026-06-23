@@ -88,10 +88,16 @@ elif [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
     # (e.g. from the pinning package's own preferences file) can never hang a
     # non-interactive build.
     _apt_noninteractive="DEBIAN_FRONTEND=noninteractive apt -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold"
+    # The pinning package is only a branch-level safety floor; the exact-patch
+    # closure is forced by the explicit versioned install below. Not every driver
+    # major ships a nvidia-driver-pinning-<major> package in Debian's repo, so a
+    # missing package here must not abort the build.
     if [[ $DISTRIBUTION == *"debian"* && -n "${NVIDIA_DRIVER_MAJOR_VERSION}" ]]; then
-        eval ${_apt_noninteractive} install nvidia-driver-pinning-${NVIDIA_DRIVER_MAJOR_VERSION} -y
+        eval ${_apt_noninteractive} install nvidia-driver-pinning-${NVIDIA_DRIVER_MAJOR_VERSION} -y \
+            || echo "warning: nvidia-driver-pinning-${NVIDIA_DRIVER_MAJOR_VERSION} unavailable; relying on explicit-version closure install"
     else
-        eval ${_apt_noninteractive} install nvidia-driver-pinning-${NVIDIA_DRIVER_VERSION} -y
+        eval ${_apt_noninteractive} install nvidia-driver-pinning-${NVIDIA_DRIVER_VERSION} -y \
+            || echo "warning: nvidia-driver-pinning-${NVIDIA_DRIVER_VERSION} unavailable; relying on explicit-version closure install"
     fi
     # NOTE: keep the nvidia-driver-pinning-<major> branch pin in place. It pins
     # the closure to the 590.x branch and acts as a safety floor: even if the
