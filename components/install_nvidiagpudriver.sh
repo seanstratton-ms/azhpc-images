@@ -80,27 +80,24 @@ elif [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
         # ("File also in package provided by package maintainer") when that
         # package is installed below. In a non-interactive build that prompt
         # hangs the job forever (build 33778 hung ~3h). Use a unique filename.
-        cat > /etc/apt/preferences.d/azhpc-nvidia-driver-closure-pin <<EOF
-# Pin the NVIDIA driver closure to the metadata driver version so the kernel
-# module + user-mode libraries match the image CUDA toolkit.
-#
-# Package: * is intentional and SAFE here because the pin is version-scoped:
-# Pin-Priority 1001 is only granted to versions matching ${NVIDIA_DRIVER_VERSION}*,
-# and the only packages in the Debian archive that publish such a version are the
-# NVIDIA 590.44.01 driver closure. Every other package (glibc, bash, the CUDA
-# toolkit at 13.x, nvidia-container-toolkit at 1.x, etc.) has no matching version
-# so the pin is inert for it and it floats normally.
-#
-# An enumerated Package list was tried first (build 33802) and FAILED: the driver
-# closure has members that are easy to miss (libglx-nvidia0, libxnvctrl0,
-# nvidia-driver-libs, nvidia-driver-cuda). Listing a subset forced part of the
-# closure to 590.44.01 while the rest floated to 590.48.01, which apt could not
-# reconcile ("you have held broken packages"). Pinning by version across all
-# packages closes every gap with no whack-a-mole.
-Package: *
-Pin: version ${NVIDIA_DRIVER_VERSION}*
-Pin-Priority: 1001
-EOF
+        # IMPORTANT: the generated preferences file must contain ONLY the pin
+        # stanza — no inline '#' comments. Debian 13's apt 3.0 preferences parser
+        # mishandles comment lines inside a stanza and emits
+        # "Warning: Did not understand pin type version", silently DISCARDING the
+        # whole pin (build 33843: closure floated unpinned to 610.43.02). Keep all
+        # explanation here in the shell script, never in the file.
+        #
+        # Package: * is intentional and SAFE because the pin is version-scoped:
+        # Pin-Priority 1001 is only granted to versions matching
+        # ${NVIDIA_DRIVER_VERSION}*, and the only packages in the archive that
+        # publish such a version are the NVIDIA driver closure. Every other
+        # package (glibc, CUDA toolkit 13.x, nvidia-container-toolkit 1.x, ...)
+        # has no matching version, so the pin is inert for it and it floats.
+        # An enumerated Package list was tried first (33802) and FAILED because
+        # closure members are easy to miss (libglx-nvidia0, libxnvctrl0,
+        # nvidia-driver-libs, nvidia-driver-cuda); Package: * closes every gap.
+        printf 'Package: *\nPin: version %s*\nPin-Priority: 1001\n' "${NVIDIA_DRIVER_VERSION}" \
+            > /etc/apt/preferences.d/azhpc-nvidia-driver-closure-pin
         echo "Pinned NVIDIA driver closure to ${NVIDIA_DRIVER_VERSION} via /etc/apt/preferences.d/azhpc-nvidia-driver-closure-pin"
     fi
 
