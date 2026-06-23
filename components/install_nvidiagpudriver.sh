@@ -119,6 +119,22 @@ EOF
     else
         eval ${_apt_noninteractive} install nvidia-driver-pinning-${NVIDIA_DRIVER_VERSION} -y
     fi
+    if [[ $DISTRIBUTION == *"debian"* ]]; then
+        # The nvidia-driver-pinning-<major> package ships
+        # /etc/apt/preferences.d/nvidia-driver-pin, which pins the driver
+        # packages by SPECIFIC name to the branch-latest patch (e.g. 590.48.01).
+        # apt gives specific-name pin records precedence over wildcard
+        # (Package: *) records regardless of priority, so that file silently
+        # overrode our exact-patch closure pin: build 33812 (image 2606.22.2915)
+        # installed the nvidia-open=590.44.01 META package but floated the whole
+        # closure (nvidia-kernel-open-dkms, nvidia-driver-cuda, libnvidia-*) to
+        # 590.48.01 — reintroducing the CUDA 13.1-vs-13.2 mismatch. Remove the
+        # branch pin so our azhpc-nvidia-driver-closure-pin (Package: *, version
+        # ${NVIDIA_DRIVER_VERSION}*, Pin-Priority 1001) is the only governing
+        # record and forces the complete closure to ${NVIDIA_DRIVER_VERSION}.
+        rm -f /etc/apt/preferences.d/nvidia-driver-pin
+        echo "Removed nvidia-driver-pinning-${NVIDIA_DRIVER_MAJOR_VERSION:-$NVIDIA_DRIVER_VERSION} branch pin so the exact-patch closure pin (${NVIDIA_DRIVER_VERSION}) governs"
+    fi
     if [ "$SKU" = "V100" ]; then
         # V100 requires proprietary kernel modules
         apt install cuda-drivers -y
@@ -127,6 +143,21 @@ EOF
         # major-version repo metadata. The preferences.d pin above forces the
         # whole dependency closure to the same ${NVIDIA_DRIVER_VERSION}.
         apt install -y --allow-downgrades nvidia-open=${NVIDIA_DRIVER_VERSION}-1
+
+        # Hard assertion: the REAL driver is the kernel module + user-mode libs,
+        # not the (tiny) nvidia-open meta-package. If the closure floated to a
+        # different patch, the image CUDA toolkit will mismatch the driver at
+        # runtime (gpu-burn PTX / NVBandwidth / NCCL failures) even though the
+        # build is otherwise green. Build 33812 shipped that exact silent
+        # mismatch (meta 590.44.01, closure 590.48.01). Fail the build loudly
+        # here instead of producing a broken image.
+        installed_kmod_version=$(dpkg-query -W -f='${Version}' nvidia-kernel-open-dkms 2>/dev/null | sed 's/-[0-9]*$//')
+        if [[ "${installed_kmod_version}" != "${NVIDIA_DRIVER_VERSION}" ]]; then
+            echo "##[error]NVIDIA driver closure mismatch: nvidia-kernel-open-dkms is ${installed_kmod_version:-<none>} but the image expects ${NVIDIA_DRIVER_VERSION}. The exact-patch apt pin did not govern the closure; refusing to ship a driver/CUDA-toolkit mismatched image."
+            dpkg-query -W -f='${Package} ${Version}\n' 'nvidia-*' 'libnvidia-*' 2>/dev/null | grep -E '590\.' || true
+            exit 1
+        fi
+        echo "Verified NVIDIA driver closure resolved to ${NVIDIA_DRIVER_VERSION} (nvidia-kernel-open-dkms ${installed_kmod_version})"
     else
         # A100, H100, H200 use open kernel modules
         apt install nvidia-open -y
