@@ -601,7 +601,7 @@
         "debian13": {
             "x86_64": {
                 "driver": {
-                    "version": "13.0",
+                    "version": "13.2",
                     "distribution": "debian13"
                 },
                 "samples": {
