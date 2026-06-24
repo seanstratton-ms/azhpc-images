@@ -182,9 +182,24 @@ elif [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
     # prevent nvidia.ko from being produced for the shipped kernel.
     if [[ $DISTRIBUTION == *"debian"* ]]; then
         run_kernel="$(uname -r)"
-        boot_kernel="$(ls -1 /lib/modules 2>/dev/null | sort -V | tail -1)"
-        if [[ -n "$boot_kernel" && "$boot_kernel" != "$run_kernel" ]]; then
-            echo "NVIDIA DKMS built for running kernel ${run_kernel}; rebuilding for image boot kernel ${boot_kernel}"
+        # The captured image boots the cloud-flavored kernel (grub-cloud-amd64
+        # default), so prefer a -cloud- kernel as the boot kernel; fall back to
+        # the highest-versioned kernel if none is present.
+        boot_kernel="$(ls -1 /lib/modules 2>/dev/null | grep -E '\-cloud-' | sort -V | tail -1)"
+        [[ -z "$boot_kernel" ]] && boot_kernel="$(ls -1 /lib/modules 2>/dev/null | sort -V | tail -1)"
+        # Gate on whether nvidia.ko actually exists for the boot kernel, NOT on a
+        # boot-vs-running kernel name comparison. DKMS autoinstall builds nvidia
+        # only for the kernel whose headers happen to be installed — the generic
+        # non-cloud linux-headers-amd64 meta dragged in by doca-ofed
+        # (6.12.94+deb13-amd64) — which is a DIFFERENT flavor than the cloud
+        # kernel the image boots, even when `uname -r` matches the boot kernel by
+        # version string. A name comparison wrongly concluded "already built" and
+        # skipped the rebuild (build 33895 -> nvidia.ko only under
+        # 6.12.94+deb13-amd64, none under 6.12.94+deb13-cloud-amd64 -> driver
+        # never loaded on the A100 nodes -> DCGM "no entities", gpu-burn missing).
+        if [[ -n "$boot_kernel" ]] \
+                && ! find "/lib/modules/${boot_kernel}" -name 'nvidia.ko*' 2>/dev/null | grep -q .; then
+            echo "NVIDIA DKMS not present for image boot kernel ${boot_kernel} (running kernel ${run_kernel}; module built for a different kernel flavor); rebuilding"
             apt-get install -y "linux-headers-${boot_kernel}" || true
             dkms status 2>/dev/null | grep -iE '(^| )nvidia' | while IFS= read -r _nv_line; do
                 _nv_mod="$(sed -E 's#^([^/,]+)[/,].*#\1#' <<< "$_nv_line")"
@@ -196,6 +211,18 @@ elif [[ $DISTRIBUTION == *"ubuntu"* || $DISTRIBUTION == *"debian"* ]]; then
             done
             update-initramfs -u -k "$boot_kernel" || true
         fi
+        # Hard assertion: refuse to ship an image whose boot kernel has no
+        # nvidia.ko — that always yields a non-functional GPU image (nvidia-smi
+        # "couldn't communicate with the NVIDIA driver", DCGM/gpu-burn fail) that
+        # only surfaces during A100 validation, wasting a full build+validate
+        # cycle (build 33895 / validation 33906).
+        if [[ -n "$boot_kernel" ]] \
+                && ! find "/lib/modules/${boot_kernel}" -name 'nvidia.ko*' 2>/dev/null | grep -q .; then
+            echo "##[error]nvidia.ko is still missing for the image boot kernel ${boot_kernel} after reconciliation; refusing to ship a GPU image whose driver will not load at runtime"
+            echo "##[debug]nvidia.ko locations found:"; find /lib/modules -name 'nvidia.ko*' 2>/dev/null || true
+            exit 1
+        fi
+        echo "Verified nvidia.ko present for image boot kernel ${boot_kernel}"
     fi
     # ---------------------------------------------------------------------------
 
