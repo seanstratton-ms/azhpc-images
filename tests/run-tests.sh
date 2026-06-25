@@ -165,30 +165,53 @@ function ensure_nvidia_fabricmanager_active {
         echo "nvidia-fabricmanager.service unit not present; skipping FM start"
         return 0
     fi
-    if systemctl is-active --quiet nvidia-fabricmanager.service; then
-        return 0
+    # Bring FM to systemd-active. FM commonly fails at BOOT on Debian A100 nodes
+    # because systemd starts it before the NVIDIA driver is fully initialized
+    # ("failed to allocate handle (client) to NVIDIA GPU driver"). That leaves
+    # the unit failed with the start-limit tripped, so a plain `systemctl start`
+    # is a no-op and never recovers even once the driver is ready. Clear the
+    # failed/start-limit state first, then `restart` to force a fresh attempt now
+    # that the driver is up. (No-op when FM is already active.)
+    if ! systemctl is-active --quiet nvidia-fabricmanager.service; then
+        echo "Starting nvidia-fabricmanager.service for runtime validation..."
+        sudo -n systemctl reset-failed nvidia-fabricmanager.service 2>/dev/null || true
+        sudo -n systemctl restart nvidia-fabricmanager.service || true
+        local retries=0
+        while ! systemctl is-active --quiet nvidia-fabricmanager.service; do
+            if (( retries++ >= 60 )); then
+                echo "Warning: nvidia-fabricmanager.service did not become active within 60s"
+                sudo -n systemctl --no-pager status nvidia-fabricmanager.service || true
+                return 0
+            fi
+            sleep 1
+        done
+        echo "nvidia-fabricmanager.service is active."
     fi
-    # FM commonly fails at BOOT on Debian A100 nodes because systemd starts it
-    # before the NVIDIA driver is fully initialized ("failed to allocate handle
-    # (client) to NVIDIA GPU driver"). That leaves the unit in a failed state
-    # with the start-limit tripped, so a plain `systemctl start` is a no-op and
-    # never recovers even once the driver is ready. Clear the failed/start-limit
-    # state first, then `restart` to force a fresh attempt now that the driver
-    # is up.
-    echo "Starting nvidia-fabricmanager.service for runtime validation..."
-    sudo -n systemctl reset-failed nvidia-fabricmanager.service 2>/dev/null || true
-    sudo -n systemctl restart nvidia-fabricmanager.service || true
-    # Wait up to 60s for FM to reach active state and complete fabric setup.
-    local retries=0
-    while ! systemctl is-active --quiet nvidia-fabricmanager.service; do
-        if (( retries++ >= 60 )); then
-            echo "Warning: nvidia-fabricmanager.service did not become active within 60s"
-            sudo -n systemctl --no-pager status nvidia-fabricmanager.service || true
-            return 0
+
+    # FM being systemd-active is NOT sufficient: on NVSwitch the GPUs stay
+    # excluded (cuInit returns CUDA_ERROR_NO_DEVICE) until FM finishes NVLink
+    # fabric registration. The first CUDA workload in the image sanity suite
+    # (gdrcopy_sanity -> ASSERTDRV(cuInit(0)) at sanity.cpp:68) otherwise races
+    # ahead of fabric completion and aborts with CUDA_ERROR_NO_DEVICE on all
+    # GPUs, even though gpu-burn later passes once the fabric is ready
+    # (validation 34017). Wait for nvidia-smi to report the fabric state as
+    # Completed before returning so CUDA is actually usable.
+    local fab_retries=0
+    while true; do
+        local fab_state
+        fab_state=$(nvidia-smi -q 2>/dev/null \
+            | awk '/^[[:space:]]*Fabric/{infab=1; next} infab && /State/{print $NF; exit}')
+        if [[ "$fab_state" == "Completed" ]]; then
+            echo "NVLink fabric registration is Completed; GPUs are CUDA-ready."
+            break
+        fi
+        if (( fab_retries++ >= 180 )); then
+            echo "Warning: NVLink fabric did not reach 'Completed' within 180s (last state: '${fab_state:-unknown}')"
+            nvidia-smi -q 2>/dev/null | grep -iA3 'Fabric' | head -8 || true
+            break
         fi
         sleep 1
     done
-    echo "nvidia-fabricmanager.service is active."
 }
 
 function set_test_matrix {
