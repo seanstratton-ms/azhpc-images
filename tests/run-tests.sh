@@ -102,7 +102,17 @@ function verify_common_components {
         fi
         verify_mkl_installation;
         verify_hpcdiag_installation;
-        verify_aznfs_installation;
+        # AZNFS Mount Helper has no PMC package for Debian 13, so the build
+        # (components/install_aznfs.sh) intentionally skips it with a warning
+        # rather than failing the bake. Mirror that here: the test otherwise
+        # hard-checks /opt/microsoft/aznfs/ and fails on Debian even though the
+        # absence is expected and accepted at build time.
+        # TODO(debian13): re-enable once an aznfs package is published for Debian.
+        if [[ "${ID:-}" == "debian" ]]; then
+            echo "[SKIP] : AZNFS sanity check (no aznfs PMC package for Debian 13; not installed by design)"
+        else
+            verify_aznfs_installation;
+        fi
     fi
 }
 
