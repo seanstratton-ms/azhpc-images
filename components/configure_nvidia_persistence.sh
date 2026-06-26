@@ -4,6 +4,20 @@ set -ex
 # Configure NVIDIA persistence daemon to keep the GPU driver loaded in memory
 # This eliminates cold start delays when launching GPU applications
 
+# On Debian, also enable UVM persistence so the /dev/nvidia-uvm and
+# /dev/nvidia-uvm-tools device nodes are created at boot (as root). Without it,
+# those nodes are only created lazily on the first CUDA init by root/setuid
+# nvidia-modprobe, so a NON-ROOT cuInit() (e.g. the image sanity gdrcopy/osu
+# tests run as hpcuser over pdsh) returns CUDA_ERROR_NO_DEVICE even though the
+# driver, NVML (nvidia-smi) and Fabric Manager are all healthy (validation
+# 34252: root aznhc gpu-burn passed while non-root gdrcopy_sanity got
+# NO_DEVICE in the same run). Other distros already create these nodes and are
+# left unchanged to avoid regressing working images.
+PERSISTENCED_EXTRA_FLAGS=""
+if [[ "${DISTRIBUTION:-}" == *"debian"* ]]; then
+    PERSISTENCED_EXTRA_FLAGS=" --uvm-persistence-mode"
+fi
+
 # Create systemd service file if it doesn't exist
 if [ ! -f /etc/systemd/system/nvidia-persistenced.service ]; then
     cat <<EOF > /etc/systemd/system/nvidia-persistenced.service
@@ -15,7 +29,7 @@ Wants=syslog.target
 Type=forking
 PIDFile=/var/run/nvidia-persistenced/nvidia-persistenced.pid
 Restart=always
-ExecStart=/usr/bin/nvidia-persistenced --verbose --persistence-mode
+ExecStart=/usr/bin/nvidia-persistenced --verbose --persistence-mode${PERSISTENCED_EXTRA_FLAGS}
 ExecStopPost=/bin/rm -rf /var/run/nvidia-persistenced
  
 [Install]

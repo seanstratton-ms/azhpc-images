@@ -165,57 +165,42 @@ function ensure_nvidia_fabricmanager_active {
         echo "nvidia-fabricmanager.service unit not present; skipping FM start"
         return 0
     fi
-    # Bring FM up and wait for the NVLink fabric to actually finish registering.
-    #
-    # Two distinct failure modes on Debian A100 nodes, both fixed here:
-    #  1. FM fails at BOOT (systemd starts it before the driver is initialized:
-    #     "failed to allocate handle (client) to NVIDIA GPU driver"), trips the
-    #     start-limit, and a plain restart is a no-op.
-    #  2. FM is systemd-ACTIVE but the fabric never registered — nvidia-smi shows
-    #     "Fabric State: N/A" / "GPU Fabric GUID: N/A" — so cuInit() returns
-    #     CUDA_ERROR_NO_DEVICE for EVERY GPU and all CUDA work fails (gdrcopy
-    #     sanity.cpp:68, gpu-burn "no CUDA-capable device", validation 34190).
-    #     An "active" unit is therefore NOT proof the fabric is usable.
-    #
-    # Recover from both by force-restarting FM (reset-failed first) even when it
-    # is already active, then waiting for nvidia-smi to report the fabric State
-    # as "Completed". Retry the whole cycle a few times before giving up.
-    local attempt fab_state sd_wait fab_wait
-    for attempt in 1 2 3 4; do
-        fab_state=$(nvidia-smi -q 2>/dev/null \
-            | awk '/^[[:space:]]*Fabric/{infab=1; next} infab && /State/{print $NF; exit}')
-        if [[ "$fab_state" == "Completed" ]]; then
-            echo "NVLink fabric registration is Completed; GPUs are CUDA-ready."
-            return 0
-        fi
-        echo "NVLink fabric not ready (attempt ${attempt}/4, FM active but fabric State='${fab_state:-unknown}'); force-restarting nvidia-fabricmanager.service..."
+    # Start FM if it isn't already active. FM can fail at BOOT on Debian A100
+    # nodes when systemd starts it before the driver is initialized; clear any
+    # failed/start-limit state and restart so it comes up once the driver is up.
+    # (Fabric Manager itself works on these nodes — its journal logs
+    # "Successfully configured all the available GPUs and NVSwitches to route
+    # NVLink traffic" — so we do NOT gate on nvidia-smi's "Fabric State", which
+    # reads "N/A" on Azure NDv4 even when the fabric is fully functional.)
+    if ! systemctl is-active --quiet nvidia-fabricmanager.service; then
+        echo "Starting nvidia-fabricmanager.service for runtime validation..."
         sudo -n systemctl reset-failed nvidia-fabricmanager.service 2>/dev/null || true
         sudo -n systemctl restart nvidia-fabricmanager.service || true
-        # Wait up to 60s for the unit to reach systemd-active.
-        sd_wait=0
+        local retries=0
         while ! systemctl is-active --quiet nvidia-fabricmanager.service; do
-            if (( sd_wait++ >= 60 )); then
-                echo "  nvidia-fabricmanager.service did not become active within 60s on attempt ${attempt}"
+            if (( retries++ >= 60 )); then
+                echo "Warning: nvidia-fabricmanager.service did not become active within 60s"
+                sudo -n systemctl --no-pager status nvidia-fabricmanager.service || true
                 break
             fi
             sleep 1
         done
-        # Wait up to 120s for the fabric to finish registering.
-        fab_wait=0
-        while (( fab_wait++ < 120 )); do
-            fab_state=$(nvidia-smi -q 2>/dev/null \
-                | awk '/^[[:space:]]*Fabric/{infab=1; next} infab && /State/{print $NF; exit}')
-            if [[ "$fab_state" == "Completed" ]]; then
-                echo "NVLink fabric registration is Completed; GPUs are CUDA-ready."
-                return 0
-            fi
-            sleep 1
-        done
-        echo "  fabric still not Completed after attempt ${attempt} (State='${fab_state:-unknown}')"
-    done
-    echo "Warning: NVLink fabric did not reach 'Completed' after 4 restart attempts; CUDA may be unusable on this node."
-    sudo -n systemctl --no-pager status nvidia-fabricmanager.service 2>/dev/null | head -20 || true
-    nvidia-smi -q 2>/dev/null | grep -iA4 'Fabric' | head -10 || true
+    fi
+
+    # Ensure the NVIDIA UVM device nodes exist. The driver loads and NVML works
+    # (nvidia-smi lists all GPUs), but /dev/nvidia-uvm and /dev/nvidia-uvm-tools
+    # are created lazily on the first CUDA init, and only root (or setuid
+    # nvidia-modprobe) can create them. On Debian the image runs persistenced
+    # with --persistence-mode (which keeps /dev/nvidia0..N) but the UVM nodes are
+    # not pre-created, so a NON-ROOT cuInit() — e.g. gdrcopy_sanity / osu run as
+    # hpcuser over pdsh — returns CUDA_ERROR_NO_DEVICE, while the root aznhc
+    # gpu-burn in the same run succeeds (validation 34252). Create the nodes here
+    # as root via nvidia-modprobe so subsequent non-root CUDA tests can run.
+    if command -v nvidia-modprobe >/dev/null 2>&1; then
+        echo "Ensuring NVIDIA UVM device nodes exist (nvidia-modprobe -c0 -u)..."
+        sudo -n nvidia-modprobe -c0 -u || nvidia-modprobe -c0 -u || \
+            echo "Warning: nvidia-modprobe could not create UVM device nodes; non-root CUDA may fail"
+    fi
 }
 
 function set_test_matrix {
