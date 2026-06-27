@@ -201,6 +201,52 @@ function ensure_nvidia_fabricmanager_active {
         sudo -n nvidia-modprobe -c0 -u || nvidia-modprobe -c0 -u || \
             echo "Warning: nvidia-modprobe could not create UVM device nodes; non-root CUDA may fail"
     fi
+
+    # Wait for CUDA to actually be usable before running any CUDA workload.
+    #
+    # On NVSwitch A100, cuInit() returns CUDA_ERROR_NO_DEVICE (100) until Fabric
+    # Manager finishes registering the NVLink fabric. The image sanity suite runs
+    # within seconds of cluster boot (Test 1 and Test 2 were 4s apart in
+    # validation 34467), so on nodes whose fabric registration is still in
+    # progress, BOTH the non-root gdrcopy_sanity and the root gpu-burn fail with
+    # cuInit=100 — even though the GPUs are healthy and FM ultimately succeeds.
+    # The number of affected nodes varied run to run (1/5, then 3/6), the
+    # signature of a readiness race with no wait. nvidia-smi's "Fabric State"
+    # cannot be used as the gate (it reads "N/A" on Azure NDv4 even when the
+    # fabric is fully functional), so poll cuInit() directly via libcuda. NVML
+    # (nvidia-smi) is not sufficient — it works before CUDA is ready.
+    if command -v python3 >/dev/null 2>&1; then
+        echo "Waiting for CUDA (cuInit) to become ready..."
+        python3 - <<'PYEOF'
+import ctypes, sys, time
+deadline = time.time() + 180
+lib = None
+for name in ("libcuda.so.1", "libcuda.so"):
+    try:
+        lib = ctypes.CDLL(name)
+        break
+    except OSError:
+        continue
+if lib is None:
+    print("  libcuda not loadable; skipping cuInit readiness wait")
+    sys.exit(0)
+CUDA_SUCCESS = 0
+attempt = 0
+while True:
+    rc = lib.cuInit(0)
+    if rc == CUDA_SUCCESS:
+        cnt = ctypes.c_int(0)
+        # cuDeviceGetCount confirms devices are actually visible to CUDA.
+        if lib.cuDeviceGetCount(ctypes.byref(cnt)) == CUDA_SUCCESS and cnt.value > 0:
+            print(f"  CUDA ready: cuInit=0, {cnt.value} device(s) visible (after {attempt} ret(s))")
+            sys.exit(0)
+    attempt += 1
+    if time.time() >= deadline:
+        print(f"  Warning: CUDA not ready after 180s (last cuInit rc={rc}); proceeding anyway")
+        sys.exit(0)
+    time.sleep(2)
+PYEOF
+    fi
 }
 
 function set_test_matrix {
